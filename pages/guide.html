@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>دليل الاستخدام — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.guide-section { background:var(--card); backdrop-filter:var(--glass-blur); border:1px solid var(--glass-border); border-radius:var(--r); padding:22px 24px; margin-bottom:14px; box-shadow:var(--shadow-sm); }
+.guide-section h3 { font-size:1rem; font-weight:900; color:var(--ink2); margin-bottom:14px; display:flex; align-items:center; gap:10px; border-bottom:2px solid var(--border); padding-bottom:10px; }
+.guide-step { display:flex; gap:12px; margin-bottom:12px; align-items:flex-start; }
+.guide-step-num { width:26px; height:26px; border-radius:50%; background:linear-gradient(135deg,var(--sky),var(--plum)); color:white; font-size:0.78rem; font-weight:900; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px; }
+.guide-step-body { flex:1; }
+.guide-step-title { font-weight:800; font-size:0.88rem; color:var(--ink2); margin-bottom:3px; }
+.guide-step-desc  { font-size:0.80rem; color:var(--muted); line-height:1.6; }
+.tip-box { background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:10px; padding:10px 14px; font-size:0.82rem; color:var(--ink); margin-top:10px; }
+.tip-box strong { color:#d97706; }
+.guide-nav { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px; }
+.guide-nav a { padding:7px 14px; background:var(--accent-soft); border:1.5px solid var(--border); border-radius:99px; font-size:0.80rem; font-weight:700; color:var(--sky); text-decoration:none; transition:all 0.15s; }
+.guide-nav a:hover { background:var(--sky); color:white; border-color:var(--sky); }
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'guide';
+initApp({ sections:[], onReady: renderGuide });
+
+function renderGuide() {
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">📖 دليل الاستخدام</span></div>
+    <div class="ph"><div><div class="ph-title">📖 دليل الاستخدام</div><div class="ph-sub">كيفية استخدام منصة مدارس البشرى خطوة بخطوة</div></div></div>
+
+    <div class="guide-nav">
+      <a href="#start">🚀 البداية</a>
+      <a href="#students">👥 الطلاب</a>
+      <a href="#attendance">📅 الحضور</a>
+      <a href="#lesson">🖥️ وضع الحصة</a>
+      <a href="#grades">📒 الدرجات</a>
+      <a href="#behavior">⭐ السلوك</a>
+      <a href="#reports">📊 التقارير</a>
+      <a href="#tips">💡 نصائح</a>
+    </div>
+
+    <!-- البداية -->
+    <div class="guide-section" id="start">
+      <h3>🚀 البداية السريعة</h3>
+      ${steps([
+        ['تسجيل الدخول','ادخل بحساب Google أو أنشئ حساباً بالبريد الإلكتروني من صفحة تسجيل الدخول'],
+        ['إنشاء الفصل','سيُنشأ فصل افتراضي تلقائياً — يمكنك تغيير اسمه من الملف الشخصي'],
+        ['إضافة الطلاب','اذهب إلى صفحة الطلاب وأضف الطلاب يدوياً أو استورد قائمة بالأسماء دفعة واحدة'],
+        ['ابدأ العمل','الآن يمكنك تسجيل الحضور، إدارة الدرجات، وبدء وضع الحصة'],
+      ])}
+    </div>
+
+    <!-- الطلاب -->
+    <div class="guide-section" id="students">
+      <h3>👥 إدارة الطلاب</h3>
+      ${steps([
+        ['إضافة طالب','اضغط "➕ طالب جديد" وأدخل الاسم والمعلومات'],
+        ['استيراد جماعي','من صفحة "استيراد Classroom" الصق قائمة أسماء أو ارفع ملف CSV'],
+        ['تعديل بيانات','اضغط ✏️ بجانب الطالب لتعديل بياناته'],
+        ['إضافة صورة','من صفحة "صور الطلاب" اضغط على بطاقة الطالب لرفع صورته'],
+      ])}
+    </div>
+
+    <!-- الحضور -->
+    <div class="guide-section" id="attendance">
+      <h3>📅 تسجيل الحضور</h3>
+      ${steps([
+        ['الحضور اليومي','افتح صفحة "الحضور اليومي" واختر التاريخ ثم سجّل لكل طالب: حاضر ✓ أو غائب ✗ أو متأخر ⏰'],
+        ['وضع الحصة','في وضع الحصة يمكنك تسجيل الحضور مباشرة على بطاقة كل طالب وحفظه دفعة واحدة'],
+        ['تقرير الغياب','صفحة "تقرير الغياب" تعرض إحصاءات غياب كل طالب مرتّبة تنازلياً'],
+      ])}
+      <div class="tip-box">💡 <strong>نصيحة:</strong> استخدم زر "✅ الكل حاضر" في وضع الحصة ثم غيّر الغائبين فقط — يوفر وقتاً كبيراً!</div>
+    </div>
+
+    <!-- وضع الحصة -->
+    <div class="guide-section" id="lesson">
+      <h3>🖥️ وضع الحصة (الأهم)</h3>
+      ${steps([
+        ['فتح الوضع','اضغط "وضع الحصة" من القائمة الجانبية أو زر الحصة في القائمة السفلية'],
+        ['المؤقت','اضغط على الأرقام لإيقاف/تشغيل المؤقت — اضغط "5د" أو "10د" لعداد تنازلي'],
+        ['الاختيار العشوائي','اضغط "🎲 اختيار عشوائي" لاختيار طالب عشوائياً مع تأثير بصري ممتع'],
+        ['تسجيل السلوك','اضغط النجوم ⭐ على بطاقة الطالب لتقييم سلوكه'],
+        ['الحفظ','اضغط "💾 حفظ" لحفظ الحضور والسلوك، أو "🏁 إنهاء الحصة" للحفظ والخروج'],
+        ['ملء الشاشة','اضغط ⛶ لعرض الشاشة الكاملة بدون القائمة الجانبية'],
+      ])}
+    </div>
+
+    <!-- الدرجات -->
+    <div class="guide-section" id="grades">
+      <h3>📒 دفتر الدرجات</h3>
+      ${steps([
+        ['إضافة عمود','اضغط "➕ عمود جديد" وأدخل اسم الاختبار والدرجة القصوى'],
+        ['إدخال الدرجات','اضغط على خلية أي طالب واكتب درجته مباشرة'],
+        ['التصدير','اضغط "📤 تصدير CSV" لتحميل جدول الدرجات كملف Excel'],
+      ])}
+    </div>
+
+    <!-- السلوك -->
+    <div class="guide-section" id="behavior">
+      <h3>⭐ تقييم السلوك</h3>
+      ${steps([
+        ['تقييم يومي','من صفحة "تقييم السلوك" اختر اليوم ومنح كل طالب نجوماً من 1 إلى 5'],
+        ['لوحة الشرف','الطلاب الأعلى تقييماً يظهرون تلقائياً في لوحة الشرف'],
+        ['خريطة الكنز','استخدم خريطة الكنز لمنح عملات 🪙 كمكافأة إضافية'],
+      ])}
+    </div>
+
+    <!-- التقارير -->
+    <div class="guide-section" id="reports">
+      <h3>📊 التقارير والتحليلات</h3>
+      ${steps([
+        ['التقارير','صفحة التقارير تعرض ملخصاً سريعاً مع رسوم بيانية للحضور والدرجات'],
+        ['التحليلات','صفحة التحليلات تعرض رسوماً تفصيلية لكل مقياس'],
+        ['الرؤى الذكية','تحليل تلقائي يُظهر الطلاب المتميزين والذين يحتاجون متابعة'],
+        ['العرض الشامل','جدول مقارن لجميع الطلاب بكل المؤشرات في مكان واحد'],
+        ['تصدير البيانات','من الملف الشخصي → "📤 تصدير كل البيانات" لأخذ نسخة احتياطية كاملة'],
+      ])}
+    </div>
+
+    <!-- نصائح -->
+    <div class="guide-section" id="tips">
+      <h3>💡 نصائح وحيل</h3>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        ${[
+          ['🔄','تعمل المنصة على جميع الأجهزة (موبايل، تابلت، كمبيوتر) — بياناتك تتزامن تلقائياً'],
+          ['🏫','يمكنك إنشاء عدة فصول والتبديل بينها من الأيقونة 🏫 في أعلى الصفحة'],
+          ['🎨','غيّر لون الواجهة والوضع الداكن من صفحة الملف الشخصي'],
+          ['📷','أضف صورة لكل طالب لتسهيل التعرف عليهم في وضع الحصة'],
+          ['💾','البيانات تُحفظ تلقائياً على السحابة — لا تخشى فقدانها'],
+          ['📤','احتفظ بنسخة احتياطية دورية من صفحة الملف الشخصي'],
+        ].map(([icon,text])=>`<div class="tip-box">${icon} ${text}</div>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function steps(list) {
+  return list.map(([title,desc],i)=>`
+    <div class="guide-step">
+      <div class="guide-step-num">${i+1}</div>
+      <div class="guide-step-body">
+        <div class="guide-step-title">${title}</div>
+        <div class="guide-step-desc">${desc}</div>
+      </div>
+    </div>`).join('');
+}
+</script>
+</body>
+</html>

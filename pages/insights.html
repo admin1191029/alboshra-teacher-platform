@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>رؤى ذكية — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.insight-card {
+  background:var(--card); backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-border); border-radius:var(--r);
+  padding:20px 22px; box-shadow:var(--shadow-sm); margin-bottom:16px;
+}
+.insight-card h3 { font-size:0.95rem; font-weight:800; color:var(--ink2); margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+.student-rank-item {
+  display:flex; align-items:center; gap:10px; padding:8px 0;
+  border-bottom:1px solid var(--border); font-size:0.85rem;
+}
+.student-rank-item:last-child { border-bottom:none; }
+.rank-avatar {
+  width:32px; height:32px; border-radius:50%;
+  background:linear-gradient(135deg,var(--sky),var(--plum));
+  color:white; font-size:0.85rem; font-weight:900;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+.rank-bar-wrap { flex:1; background:var(--surface); border-radius:99px; height:8px; overflow:hidden; }
+.rank-bar { height:100%; border-radius:99px; transition:width 0.6s ease; }
+.alert-item {
+  display:flex; align-items:center; gap:10px; padding:10px 14px;
+  background:rgba(239,68,68,0.07); border:1px solid rgba(239,68,68,0.18);
+  border-radius:10px; margin-bottom:8px; font-size:0.84rem;
+}
+.good-item {
+  display:flex; align-items:center; gap:10px; padding:10px 14px;
+  background:rgba(16,185,129,0.07); border:1px solid rgba(16,185,129,0.18);
+  border-radius:10px; margin-bottom:8px; font-size:0.84rem;
+}
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'insights';
+initApp({ sections:['students','attendance','behavior','grades','goals','notes'], onReady: renderInsights });
+
+function renderInsights() {
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">🤖 رؤى ذكية</span></div>
+    <div class="ph">
+      <div><div class="ph-title">🤖 رؤى ذكية</div><div class="ph-sub">تحليل تلقائي لبيانات الفصل واقتراحات للمتابعة</div></div>
+    </div>
+    <div id="insightsBody"></div>
+  `;
+  buildInsights();
+}
+
+function buildInsights() {
+  const A = window.APP;
+  const container = document.getElementById('insightsBody');
+  if (!A.students.length) {
+    container.innerHTML = `<div style="text-align:center;padding:60px;color:var(--muted);">لا يوجد طلاب بعد</div>`;
+    return;
+  }
+
+  // Calculate attendance per student
+  const attDays = Object.keys(A.attendance).filter(k=>!k.includes('_'));
+  const attStats = A.students.map(s => {
+    let present=0, absent=0, late=0;
+    attDays.forEach(d => {
+      const st = A.attendance[d]?.[s.id];
+      if(st==='present'||!st) present++; else if(st==='absent') absent++; else late++;
+    });
+    const total = attDays.length || 1;
+    return { ...s, present, absent, late, pct: Math.round((present/total)*100) };
+  });
+
+  // Behavior stars per student
+  const behStats = A.students.map(s => {
+    let total=0, count=0;
+    Object.values(A.behavior).forEach(day => {
+      if (day[s.id]?.stars) { total+=day[s.id].stars; count++; }
+    });
+    return { ...s, avgStars: count ? (total/count).toFixed(1) : 0 };
+  });
+
+  // Sorted
+  const mostAbsent  = [...attStats].sort((a,b)=>b.absent-a.absent).slice(0,5);
+  const bestAttend  = [...attStats].sort((a,b)=>b.pct-a.pct).slice(0,5);
+  const bestBehav   = [...behStats].sort((a,b)=>b.avgStars-a.avgStars).slice(0,5);
+  const needsAtt    = attStats.filter(s=>s.absent>=3||s.pct<70);
+
+  const kpis = [
+    { label:'إجمالي الطلاب',  val:A.students.length,  icon:'👥', color:'#1565c0' },
+    { label:'أيام التسجيل',   val:attDays.length,    icon:'📅', color:'#7c3aed' },
+    { label:'يحتاجون متابعة', val:needsAtt.length,   icon:'⚠️', color:'#ef4444' },
+    { label:'متوسط الحضور',   val: attDays.length ? Math.round(attStats.reduce((s,x)=>s+x.pct,0)/attStats.length)+'%' : '—', icon:'📊', color:'#10b981' },
+  ];
+
+  container.innerHTML = `
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px;">
+      ${kpis.map(k=>`
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:${k.color}20;">${k.icon}</div>
+          <div class="kpi-val" style="color:${k.color};">${k.val}</div>
+          <div class="kpi-label">${k.label}</div>
+        </div>`).join('')}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;flex-wrap:wrap;">
+
+      <!-- يحتاجون متابعة -->
+      <div class="insight-card">
+        <h3>⚠️ طلاب يحتاجون متابعة</h3>
+        ${needsAtt.length ? needsAtt.map(s=>`
+          <div class="alert-item">
+            <div class="rank-avatar">${(s.name||s.n||'؟').charAt(0)}</div>
+            <div style="flex:1;">
+              <div style="font-weight:800;">${esc(s.name||s.n||'طالب')}</div>
+              <div style="font-size:0.76rem;color:var(--muted);">غائب ${s.absent} يوم — نسبة حضور ${s.pct}%</div>
+            </div>
+            <span class="badge badge-red">${s.pct}%</span>
+          </div>`).join('')
+          : '<div style="color:var(--mint);font-weight:800;">✅ جميع الطلاب بحالة جيدة!</div>'}
+      </div>
+
+      <!-- أفضل حضوراً -->
+      <div class="insight-card">
+        <h3>🏆 أفضل حضوراً</h3>
+        ${bestAttend.map((s,i)=>`
+          <div class="student-rank-item">
+            <span style="font-size:1.1rem;">${['🥇','🥈','🥉','4️⃣','5️⃣'][i]}</span>
+            <div class="rank-avatar">${(s.name||s.n||'؟').charAt(0)}</div>
+            <div style="flex:1;">
+              <div style="font-size:0.83rem;font-weight:700;">${esc(s.name||s.n||'طالب')}</div>
+              <div class="rank-bar-wrap">
+                <div class="rank-bar" style="width:${s.pct}%;background:#10b981;"></div>
+              </div>
+            </div>
+            <span style="font-size:0.82rem;font-weight:800;color:var(--mint);">${s.pct}%</span>
+          </div>`).join('')}
+      </div>
+
+      <!-- أفضل سلوكاً -->
+      <div class="insight-card">
+        <h3>⭐ أفضل سلوكاً</h3>
+        ${bestBehav.filter(s=>s.avgStars>0).slice(0,5).map((s,i)=>`
+          <div class="good-item">
+            <div class="rank-avatar">${(s.name||s.n||'؟').charAt(0)}</div>
+            <div style="flex:1;">
+              <div style="font-weight:800;">${esc(s.name||s.n||'طالب')}</div>
+            </div>
+            <span>${'⭐'.repeat(Math.round(s.avgStars))} (${s.avgStars})</span>
+          </div>`).join('') || '<div style="color:var(--muted);">لا توجد تقييمات بعد</div>'}
+      </div>
+
+      <!-- أكثر غياباً -->
+      <div class="insight-card">
+        <h3>📉 الأكثر غياباً</h3>
+        ${mostAbsent.filter(s=>s.absent>0).map((s,i)=>`
+          <div class="student-rank-item">
+            <div class="rank-avatar">${(s.name||s.n||'؟').charAt(0)}</div>
+            <div style="flex:1;">
+              <div style="font-size:0.83rem;font-weight:700;">${esc(s.name||s.n||'طالب')}</div>
+              <div class="rank-bar-wrap">
+                <div class="rank-bar" style="width:${Math.min(100,s.absent*10)}%;background:#ef4444;"></div>
+              </div>
+            </div>
+            <span style="font-size:0.82rem;font-weight:800;color:#dc2626;">${s.absent} يوم</span>
+          </div>`).join('') || '<div style="color:var(--mint);font-weight:800;">✅ لا يوجد غياب مسجّل</div>'}
+      </div>
+
+    </div>
+
+    <!-- ملخص نصي -->
+    <div class="insight-card" style="margin-top:4px;">
+      <h3>📋 ملخص الفصل</h3>
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:0.85rem;color:var(--ink);">
+        <div>• إجمالي الطلاب: <strong>${A.students.length}</strong> طالب/طالبة</div>
+        <div>• أيام الدراسة المسجّلة: <strong>${attDays.length}</strong> يوم</div>
+        <div>• عدد الملاحظات: <strong>${(A.notes||[]).length}</strong></div>
+        <div>• عدد الأهداف: <strong>${(A.goals||[]).length}</strong></div>
+        <div>• الطلاب الذين يحتاجون متابعة (حضور أقل من 70%): <strong style="color:#dc2626;">${needsAtt.length}</strong></div>
+      </div>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>

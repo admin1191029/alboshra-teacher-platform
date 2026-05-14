@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>بنك الأسئلة — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.q-card { background:var(--card); backdrop-filter:var(--glass-blur); border:1px solid var(--glass-border); border-radius:var(--r); padding:18px 20px; box-shadow:var(--shadow-sm); margin-bottom:12px; }
+.q-text { font-size:0.92rem; font-weight:800; color:var(--ink2); margin-bottom:10px; }
+.q-option { padding:6px 12px; border-radius:8px; font-size:0.82rem; margin-bottom:4px; display:flex; align-items:center; gap:8px; }
+.q-option.correct { background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); }
+.q-option.wrong   { background:var(--surface); border:1px solid var(--border); }
+.q-option-letter  { width:22px; height:22px; border-radius:50%; background:var(--accent-soft); color:var(--sky); font-size:0.75rem; font-weight:800; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.q-option.correct .q-option-letter { background:#10b981; color:white; }
+/* Quiz mode */
+.quiz-overlay { position:fixed; inset:0; z-index:9999; background:rgba(10,20,50,0.90); display:flex; align-items:center; justify-content:center; padding:20px; }
+.quiz-box { background:white; border-radius:24px; padding:32px; max-width:560px; width:100%; box-shadow:0 40px 100px rgba(0,0,0,0.3); animation:popIn 0.3s cubic-bezier(0.34,1.56,0.64,1); }
+@keyframes popIn { from{opacity:0;transform:scale(0.85)} to{opacity:1;transform:none} }
+.quiz-progress { font-size:0.78rem; color:var(--muted); margin-bottom:8px; }
+.quiz-q { font-size:1.05rem; font-weight:800; color:var(--ink2); margin-bottom:16px; }
+.quiz-opt { display:block; width:100%; padding:10px 14px; border-radius:10px; border:2px solid var(--border); background:white; font-family:'Tajawal',sans-serif; font-size:0.88rem; font-weight:700; cursor:pointer; margin-bottom:8px; text-align:right; transition:all 0.15s; }
+.quiz-opt:hover { border-color:var(--sky); background:var(--accent-soft); }
+.quiz-opt.correct-ans { border-color:#10b981; background:rgba(16,185,129,0.12); color:#059669; }
+.quiz-opt.wrong-ans   { border-color:#ef4444; background:rgba(239,68,68,0.10); color:#dc2626; }
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+
+<!-- Add Question Modal -->
+<div class="modal-overlay" id="qModal">
+  <div class="modal" style="max-width:540px;">
+    <div class="modal-header">
+      <h3 id="qModalTitle">➕ إضافة سؤال</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('qModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="fg" style="grid-column:1/-1;">
+          <label>نص السؤال *</label>
+          <textarea id="qText" rows="2" placeholder="اكتب السؤال هنا..."></textarea>
+        </div>
+        <div class="fg"><label>المادة</label><input type="text" id="qSubject" placeholder="رياضيات، علوم..."></div>
+        <div class="fg"><label>الصعوبة</label>
+          <select id="qDiff" style="padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:'Tajawal',sans-serif;background:white;">
+            <option value="easy">سهل</option><option value="medium" selected>متوسط</option><option value="hard">صعب</option>
+          </select>
+        </div>
+        <div class="fg" style="grid-column:1/-1;"><label>✅ الإجابة الصحيحة *</label><input type="text" id="qA0" placeholder="الإجابة الصحيحة"></div>
+        <div class="fg"><label>❌ خطأ 1</label><input type="text" id="qA1" placeholder="إجابة خاطئة"></div>
+        <div class="fg"><label>❌ خطأ 2</label><input type="text" id="qA2" placeholder="إجابة خاطئة"></div>
+        <div class="fg"><label>❌ خطأ 3</label><input type="text" id="qA3" placeholder="إجابة خاطئة (اختياري)"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveQuestion()">💾 حفظ</button>
+      <button class="btn btn-ghost" onclick="closeModal('qModal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Quiz Overlay -->
+<div id="quizOverlay" class="quiz-overlay" style="display:none;">
+  <div class="quiz-box">
+    <div class="quiz-progress" id="quizProgress"></div>
+    <div class="quiz-q" id="quizQ"></div>
+    <div id="quizOpts"></div>
+    <div id="quizFeedback" style="margin:10px 0;font-weight:800;font-size:0.88rem;min-height:22px;"></div>
+    <div style="display:flex;gap:10px;margin-top:8px;">
+      <button class="btn btn-primary btn-sm" id="quizNextBtn" onclick="quizNext()" style="display:none;">التالي ←</button>
+      <button class="btn btn-ghost btn-sm" onclick="endQuiz()">إنهاء الاختبار</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'questions';
+let editQId = null;
+const quiz = { questions:[], idx:0, score:0, answered:false };
+
+initApp({ sections:['subjects'], onReady: renderQuestions });
+
+function renderQuestions() {
+  const A = window.APP;
+  if (!A.questions) A.questions = [];
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">🎮 بنك الأسئلة</span></div>
+    <div class="ph">
+      <div><div class="ph-title">🎮 بنك الأسئلة</div><div class="ph-sub">${A.questions.length} سؤال مضاف</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" onclick="startQuiz(10)">🎯 اختبار عشوائي (10)</button>
+        <button class="btn btn-primary btn-sm" onclick="openAddQ()">➕ سؤال</button>
+      </div>
+    </div>
+    <div class="filter-bar" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+      <input type="text" id="qSearch" placeholder="🔍 بحث في الأسئلة..." style="padding:7px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:'Tajawal',sans-serif;font-size:0.82rem;" oninput="renderQList()">
+    </div>
+    <div id="qList"></div>
+  `;
+  renderQList();
+}
+
+function renderQList() {
+  const A = window.APP;
+  const q = (document.getElementById('qSearch')?.value||'').toLowerCase();
+  const list = (A.questions||[]).filter(x=>!q||(x.text||'').toLowerCase().includes(q)||(x.subject||'').toLowerCase().includes(q));
+  const el = document.getElementById('qList');
+  if (!el) return;
+  if (!list.length) {
+    el.innerHTML = `<div style="text-align:center;padding:60px;color:var(--muted);">
+      <div style="font-size:3rem;margin-bottom:12px;">🎮</div>
+      <div>لا توجد أسئلة بعد. أضف أول سؤال!</div>
+    </div>`;
+    return;
+  }
+  const diffColor = {easy:'#10b981',medium:'#f59e0b',hard:'#ef4444'};
+  const diffLabel = {easy:'سهل',medium:'متوسط',hard:'صعب'};
+  const letters = ['أ','ب','ج','د'];
+  el.innerHTML = list.map((q,i) => {
+    const opts = shuffle([{t:q.correct,c:true},...(q.wrong||[]).map(t=>({t,c:false}))]);
+    return `<div class="q-card">
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;">
+        <span style="background:var(--accent-soft);color:var(--sky);padding:2px 8px;border-radius:99px;font-size:0.72rem;font-weight:800;flex-shrink:0;">${i+1}</span>
+        ${q.subject?`<span class="badge badge-blue" style="font-size:0.70rem;">${esc(q.subject)}</span>`:''}
+        <span class="badge" style="background:${diffColor[q.diff]||'#999'}20;color:${diffColor[q.diff]||'#999'};font-size:0.70rem;">${diffLabel[q.diff]||q.diff}</span>
+        <div style="margin-right:auto;display:flex;gap:6px;">
+          <button class="btn btn-ghost btn-sm" onclick="editQ('${q.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteQ('${q.id}')">🗑️</button>
+        </div>
+      </div>
+      <div class="q-text">${esc(q.text||'')}</div>
+      <div>${opts.map((o,j)=>`<div class="q-option ${o.c?'correct':'wrong'}"><div class="q-option-letter">${letters[j]}</div>${esc(o.t)}</div>`).join('')}</div>
+    </div>`;
+  }).join('');
+}
+
+function shuffle(arr) { return [...arr].sort(()=>Math.random()-0.5); }
+
+function openAddQ() {
+  editQId = null;
+  document.getElementById('qModalTitle').textContent = '➕ إضافة سؤال';
+  ['qText','qA0','qA1','qA2','qA3','qSubject'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('qDiff').value='medium';
+  openModal('qModal');
+}
+
+function editQ(id) {
+  const q = (window.APP.questions||[]).find(x=>x.id===id);
+  if (!q) return;
+  editQId = id;
+  document.getElementById('qModalTitle').textContent = '✏️ تعديل السؤال';
+  document.getElementById('qText').value = q.text||'';
+  document.getElementById('qSubject').value = q.subject||'';
+  document.getElementById('qDiff').value = q.diff||'medium';
+  document.getElementById('qA0').value = q.correct||'';
+  (q.wrong||[]).forEach((w,i)=>{ const el=document.getElementById(`qA${i+1}`); if(el) el.value=w; });
+  openModal('qModal');
+}
+
+async function saveQuestion() {
+  const A = window.APP;
+  const text = document.getElementById('qText').value.trim();
+  const correct = document.getElementById('qA0').value.trim();
+  if(!text||!correct){toast('أدخل السؤال والإجابة الصحيحة','warning');return;}
+  if(!A.questions) A.questions=[];
+  const wrong = ['qA1','qA2','qA3'].map(id=>document.getElementById(id).value.trim()).filter(Boolean);
+  const entry = { id:editQId||genId('q'), text, correct, wrong, subject:document.getElementById('qSubject').value.trim(), diff:document.getElementById('qDiff').value, createdAt:new Date().toISOString() };
+  if(editQId){ const idx=A.questions.findIndex(q=>q.id===editQId); if(idx>=0) A.questions[idx]=entry; }
+  else A.questions.unshift(entry);
+  await DB.saveSection(A.uid, A.activeClassId, 'questions', A.questions);
+  closeModal('qModal'); renderQList();
+  toast(editQId?'تم التحديث ✅':'تمت الإضافة ✅','success');
+}
+
+async function deleteQ(id) {
+  if(!confirm('حذف هذا السؤال؟')) return;
+  window.APP.questions = (window.APP.questions||[]).filter(q=>q.id!==id);
+  await DB.saveSection(window.APP.uid, window.APP.activeClassId, 'questions', window.APP.questions);
+  renderQList(); toast('تم الحذف','info');
+}
+
+function startQuiz(n) {
+  const pool = shuffle(window.APP.questions||[]).slice(0,n);
+  if(!pool.length){toast('لا توجد أسئلة بعد','warning');return;}
+  quiz.questions=pool; quiz.idx=0; quiz.score=0; quiz.answered=false;
+  document.getElementById('quizOverlay').style.display='flex';
+  showQuizQ();
+}
+
+function showQuizQ() {
+  const q = quiz.questions[quiz.idx];
+  document.getElementById('quizProgress').textContent=`السؤال ${quiz.idx+1} من ${quiz.questions.length}`;
+  document.getElementById('quizQ').textContent = q.text;
+  document.getElementById('quizFeedback').textContent='';
+  document.getElementById('quizNextBtn').style.display='none';
+  quiz.answered=false;
+  const opts = shuffle([{t:q.correct,c:true},...(q.wrong||[]).map(t=>({t,c:false}))]);
+  document.getElementById('quizOpts').innerHTML = opts.map(o=>
+    `<button class="quiz-opt" onclick="answerQ(this,'${o.c}','${o.c?'':'no'}')">${esc(o.t)}</button>`
+  ).join('');
+}
+
+function answerQ(btn, correct) {
+  if(quiz.answered) return;
+  quiz.answered=true;
+  const isCorrect = correct==='true';
+  btn.classList.add(isCorrect?'correct-ans':'wrong-ans');
+  if(isCorrect){ quiz.score++; document.getElementById('quizFeedback').innerHTML='<span style="color:#10b981;">✅ إجابة صحيحة!</span>'; }
+  else {
+    document.getElementById('quizFeedback').innerHTML=`<span style="color:#ef4444;">❌ الإجابة الصحيحة: ${esc(quiz.questions[quiz.idx].correct)}</span>`;
+    document.querySelectorAll('.quiz-opt').forEach(b=>{ if(b.onclick?.toString().includes("'true'")) b.classList.add('correct-ans'); });
+  }
+  document.getElementById('quizNextBtn').style.display='inline-flex';
+}
+
+function quizNext() {
+  quiz.idx++;
+  if(quiz.idx>=quiz.questions.length) {
+    document.getElementById('quizQ').textContent='';
+    document.getElementById('quizOpts').innerHTML='';
+    document.getElementById('quizFeedback').innerHTML='';
+    document.getElementById('quizNextBtn').style.display='none';
+    document.getElementById('quizProgress').textContent='';
+    document.querySelector('.quiz-box').innerHTML=`<div style="text-align:center;padding:20px;">
+      <div style="font-size:3rem;margin-bottom:12px;">🎉</div>
+      <div style="font-size:1.4rem;font-weight:900;color:var(--ink2);margin-bottom:8px;">انتهى الاختبار!</div>
+      <div style="font-size:1rem;color:var(--muted);margin-bottom:20px;">نتيجتك: <strong style="color:var(--sky);">${quiz.score}/${quiz.questions.length}</strong></div>
+      <button class="btn btn-primary" onclick="endQuiz()">حسناً</button>
+    </div>`;
+    return;
+  }
+  showQuizQ();
+}
+
+function endQuiz() { document.getElementById('quizOverlay').style.display='none'; }
+
+window.openAddQ=openAddQ; window.editQ=editQ; window.saveQuestion=saveQuestion;
+window.deleteQ=deleteQ; window.startQuiz=startQuiz; window.answerQ=answerQ;
+window.quizNext=quizNext; window.endQuiz=endQuiz;
+</script>
+</body>
+</html>

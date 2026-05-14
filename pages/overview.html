@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>العرض الشامل — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.ov-table { width:100%; border-collapse:collapse; font-size:0.83rem; }
+.ov-table th { background:var(--accent-soft); color:var(--ink2); font-weight:800; padding:10px 12px; text-align:right; border-bottom:2px solid var(--border); cursor:pointer; user-select:none; white-space:nowrap; }
+.ov-table th:hover { color:var(--sky); }
+.ov-table td { padding:9px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
+.ov-table tr:hover td { background:var(--accent-soft); }
+.att-bar { display:inline-block; width:60px; height:7px; background:var(--surface); border-radius:99px; overflow:hidden; vertical-align:middle; margin-right:6px; }
+.att-fill { height:100%; border-radius:99px; }
+.sort-arrow { font-size:0.65rem; margin-right:3px; color:var(--muted2); }
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'overview';
+let sortCol = 'name', sortAsc = true;
+
+initApp({ sections:['students','attendance','grades','behavior','notes'], onReady: renderOverview });
+
+function renderOverview() {
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">📋 العرض الشامل</span></div>
+    <div class="ph">
+      <div><div class="ph-title">📋 العرض الشامل</div><div class="ph-sub">نظرة شاملة على جميع الطلاب في مكان واحد</div></div>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="ovSearch" placeholder="🔍 بحث..." style="padding:7px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:'Tajawal',sans-serif;font-size:0.83rem;" oninput="renderTable()">
+        <button class="btn btn-ghost btn-sm" onclick="exportCSV()">📤 تصدير CSV</button>
+      </div>
+    </div>
+    <div class="card" style="padding:0;overflow:auto;">
+      <table class="ov-table" id="ovTable">
+        <thead>
+          <tr>
+            <th onclick="setSort('idx')">#</th>
+            <th onclick="setSort('name')">الاسم <span class="sort-arrow" id="sa_name">↕</span></th>
+            <th onclick="setSort('att')">الحضور % <span class="sort-arrow" id="sa_att">↕</span></th>
+            <th onclick="setSort('absent')">الغياب <span class="sort-arrow" id="sa_absent">↕</span></th>
+            <th onclick="setSort('stars')">السلوك ⭐ <span class="sort-arrow" id="sa_stars">↕</span></th>
+            <th onclick="setSort('notes')">ملاحظات <span class="sort-arrow" id="sa_notes">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="ovBody"></tbody>
+      </table>
+    </div>
+  `;
+  renderTable();
+}
+
+function calcData() {
+  const A = window.APP;
+  const attDays = Object.keys(A.attendance).filter(k=>!k.includes('_'));
+  return A.students.map((s,i) => {
+    let present=0, absent=0;
+    attDays.forEach(d => {
+      const st = A.attendance[d]?.[s.id];
+      if (st==='absent') absent++; else present++;
+    });
+    const total = attDays.length||1;
+    const pct = Math.round((present/total)*100);
+    let stars=0, starCount=0;
+    Object.values(A.behavior).forEach(day => {
+      if(day[s.id]?.stars){ stars+=day[s.id].stars; starCount++; }
+    });
+    const avgStars = starCount ? (stars/starCount).toFixed(1) : 0;
+    const noteCount = (A.notes||[]).filter(n=>n.studentId===s.id).length;
+    return { ...s, idx:i+1, att:pct, absent, stars:+avgStars, notes:noteCount };
+  });
+}
+
+function renderTable() {
+  const q = (document.getElementById('ovSearch')?.value||'').toLowerCase();
+  let data = calcData().filter(s => !q || (s.name||s.n||'').toLowerCase().includes(q));
+  data.sort((a,b) => {
+    let va = sortCol==='name'?(a.name||a.n||''):a[sortCol];
+    let vb = sortCol==='name'?(b.name||b.n||''):b[sortCol];
+    if(typeof va==='string') return sortAsc?va.localeCompare(vb,'ar'):vb.localeCompare(va,'ar');
+    return sortAsc?va-vb:vb-va;
+  });
+  const tbody = document.getElementById('ovBody');
+  if(!tbody) return;
+  tbody.innerHTML = data.map(s=>{
+    const nm = s.name||s.n||'طالب';
+    const attColor = s.att>=80?'#10b981':s.att>=60?'#f59e0b':'#ef4444';
+    return `<tr>
+      <td style="color:var(--muted);font-size:0.78rem;">${s.idx}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--sky),var(--plum));color:white;font-size:0.78rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${nm.charAt(0)}</div>
+          <span style="font-weight:700;">${esc(nm)}</span>
+        </div>
+      </td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="att-bar"><div class="att-fill" style="width:${s.att}%;background:${attColor};"></div></div>
+          <span style="font-weight:800;color:${attColor};">${s.att}%</span>
+        </div>
+      </td>
+      <td><span style="color:${s.absent>3?'#dc2626':'var(--ink)'};">${s.absent} يوم</span></td>
+      <td>${s.stars>0?'⭐'.repeat(Math.round(+s.stars))+` (${s.stars})`:'-'}</td>
+      <td>${s.notes>0?`<span class="badge badge-blue">${s.notes}</span>`:'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function setSort(col) {
+  if(sortCol===col) sortAsc=!sortAsc; else { sortCol=col; sortAsc=true; }
+  document.querySelectorAll('[id^=sa_]').forEach(el=>el.textContent='↕');
+  const el=document.getElementById(`sa_${col}`);
+  if(el) el.textContent=sortAsc?'↑':'↓';
+  renderTable();
+}
+
+function exportCSV() {
+  const data = calcData();
+  const rows = [['#','الاسم','الحضور%','الغياب','السلوك','الملاحظات']];
+  data.forEach(s=>rows.push([s.idx, s.name||s.n||'', s.att+'%', s.absent, s.stars, s.notes]));
+  const csv = rows.map(r=>r.join(',')).join('\n');
+  const blob = new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=`عرض_شامل_${todayStr()}.csv`; a.click();
+  toast('تم تصدير CSV','success');
+}
+
+window.setSort=setSort; window.exportCSV=exportCSV;
+</script>
+</body>
+</html>

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>استيراد Classroom — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.import-step { background:var(--card); backdrop-filter:var(--glass-blur); border:1px solid var(--glass-border); border-radius:var(--r); padding:20px 24px; margin-bottom:14px; box-shadow:var(--shadow-sm); }
+.step-num { width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--sky),var(--plum));color:white;font-size:0.9rem;font-weight:900;display:inline-flex;align-items:center;justify-content:center;margin-left:10px;flex-shrink:0; }
+.preview-chip { display:inline-flex;align-items:center;gap:6px;padding:5px 12px;background:var(--accent-soft);border:1px solid var(--border);border-radius:99px;font-size:0.80rem;font-weight:700;margin:3px; }
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'import';
+initApp({ sections:['students'], onReady: renderImport });
+
+function renderImport() {
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">🎓 استيراد Classroom</span></div>
+    <div class="ph"><div><div class="ph-title">🎓 استيراد Classroom</div><div class="ph-sub">استورد قائمة الطلاب من Google Classroom أو ملف نصي</div></div></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+
+      <!-- الطريقة 1: لصق الأسماء -->
+      <div>
+        <div class="import-step">
+          <div style="display:flex;align-items:center;margin-bottom:12px;">
+            <div class="step-num">1</div>
+            <div style="font-weight:800;color:var(--ink2);">لصق أسماء الطلاب مباشرة</div>
+          </div>
+          <p style="font-size:0.83rem;color:var(--muted);margin-bottom:12px;">الصق أسماء الطلاب — اسم واحد في كل سطر أو مفصولة بفاصلة</p>
+          <textarea id="pasteArea" rows="8" placeholder="أحمد محمد العمري&#10;فاطمة علي الزهراني&#10;خالد عبدالله السعيد&#10;..." style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:10px;font-family:'Tajawal',sans-serif;font-size:0.85rem;resize:vertical;" oninput="previewNames()"></textarea>
+          <div id="namePreview" style="margin-top:10px;"></div>
+          <button class="btn btn-primary" style="width:100%;margin-top:10px;" onclick="importFromText()">⬇️ استيراد الأسماء</button>
+        </div>
+
+        <div class="import-step">
+          <div style="display:flex;align-items:center;margin-bottom:12px;">
+            <div class="step-num">2</div>
+            <div style="font-weight:800;color:var(--ink2);">استيراد من ملف CSV</div>
+          </div>
+          <p style="font-size:0.83rem;color:var(--muted);margin-bottom:10px;">ارفع ملف CSV يحتوي على أسماء الطلاب (عمود واحد)</p>
+          <input type="file" id="csvFile" accept=".csv,.txt" style="display:none;" onchange="importCSV(event)">
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost btn-sm" onclick="downloadTemplate()">📥 تحميل نموذج CSV</button>
+            <button class="btn btn-primary btn-sm" onclick="document.getElementById('csvFile').click()">📂 رفع ملف CSV</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- الطريقة 2: من Google Classroom -->
+      <div>
+        <div class="import-step">
+          <div style="display:flex;align-items:center;margin-bottom:12px;">
+            <div class="step-num">3</div>
+            <div style="font-weight:800;color:var(--ink2);">من Google Classroom</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px;font-size:0.83rem;color:var(--ink);">
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <span style="background:var(--sky);color:white;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:0.70rem;font-weight:800;flex-shrink:0;">١</span>
+              <span>افتح <strong>classroom.google.com</strong> وادخل إلى فصلك</span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <span style="background:var(--sky);color:white;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:0.70rem;font-weight:800;flex-shrink:0;">٢</span>
+              <span>اضغط على <strong>الأشخاص</strong> ثم <strong>انسخ</strong> قائمة الطلاب</span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <span style="background:var(--sky);color:white;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:0.70rem;font-weight:800;flex-shrink:0;">٣</span>
+              <span>الصق الأسماء في خانة النص على اليسار</span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:flex-start;">
+              <span style="background:var(--sky);color:white;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:0.70rem;font-weight:800;flex-shrink:0;">٤</span>
+              <span>اضغط <strong>استيراد الأسماء</strong></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- الطلاب الحاليون -->
+        <div class="import-step">
+          <div style="font-weight:800;color:var(--ink2);margin-bottom:10px;">👥 الطلاب الحاليون (${window.APP.students.length})</div>
+          <div style="max-height:200px;overflow-y:auto;">
+            ${window.APP.students.map((s,i)=>`
+              <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:0.82rem;">
+                <span style="color:var(--muted2);">${i+1}</span>
+                <span style="font-weight:700;">${esc(s.name||s.n||'')}</span>
+              </div>`).join('') || '<div style="color:var(--muted);text-align:center;padding:20px;">لا يوجد طلاب بعد</div>'}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function previewNames() {
+  const text = document.getElementById('pasteArea').value;
+  const names = parseNames(text);
+  const el = document.getElementById('namePreview');
+  if (!names.length) { el.innerHTML=''; return; }
+  el.innerHTML = `<div style="font-size:0.78rem;color:var(--muted);margin-bottom:6px;">معاينة: ${names.length} اسم</div>
+    <div>${names.slice(0,15).map(n=>`<span class="preview-chip">👤 ${esc(n)}</span>`).join('')}${names.length>15?`<span style="color:var(--muted);font-size:0.75rem;"> +${names.length-15} آخرين</span>`:''}
+    </div>`;
+}
+
+function parseNames(text) {
+  return text.split(/[\n,،؛;]+/).map(n=>n.trim()).filter(n=>n.length>1);
+}
+
+async function importFromText() {
+  const text = document.getElementById('pasteArea').value;
+  const names = parseNames(text);
+  if (!names.length) { toast('الصق أسماء الطلاب أولاً', 'warning'); return; }
+  await doImport(names);
+}
+
+async function doImport(names) {
+  const A = window.APP;
+  const existing = new Set(A.students.map(s=>(s.name||s.n||'').trim()));
+  let added = 0;
+  names.forEach(name => {
+    if (!existing.has(name)) {
+      A.students.push({ id:genId('st'), name, n:name, createdAt:new Date().toISOString() });
+      existing.add(name); added++;
+    }
+  });
+  if (!added) { toast('جميع الأسماء موجودة بالفعل', 'info'); return; }
+  await saveSection('students');
+  toast(`✅ تمت إضافة ${added} طالب`, 'success');
+  setTimeout(()=>window.location.reload(), 1200);
+}
+
+function importCSV(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const names = e.target.result.split(/[\n\r]+/).map(r=>r.split(',')[0].replace(/"/g,'').trim()).filter(n=>n.length>1);
+    await doImport(names);
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function downloadTemplate() {
+  const csv = '﻿الاسم\nأحمد محمد العمري\nفاطمة علي الزهراني\nخالد عبدالله السعيد';
+  const blob = new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='نموذج_استيراد_طلاب.csv'; a.click();
+}
+
+window.previewNames=previewNames; window.importFromText=importFromText;
+window.importCSV=importCSV; window.downloadTemplate=downloadTemplate;
+</script>
+</body>
+</html>

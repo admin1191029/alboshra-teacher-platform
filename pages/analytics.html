@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>تحليلات — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.chart-card { background:var(--card); backdrop-filter:var(--glass-blur); border:1px solid var(--glass-border); border-radius:var(--r); padding:20px; box-shadow:var(--shadow-sm); }
+.chart-card h3 { font-size:0.92rem; font-weight:800; color:var(--ink2); margin-bottom:14px; }
+.bar-chart { display:flex; align-items:flex-end; gap:8px; height:160px; padding-bottom:24px; position:relative; }
+.bar-wrap { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end; }
+.bar { width:100%; border-radius:6px 6px 0 0; min-height:4px; transition:height 0.6s ease; position:relative; cursor:pointer; }
+.bar:hover::after { content:attr(data-val); position:absolute; top:-22px; left:50%; transform:translateX(-50%); font-size:0.70rem; font-weight:800; color:var(--ink2); white-space:nowrap; }
+.bar-label { font-size:0.68rem; color:var(--muted); text-align:center; position:absolute; bottom:0; }
+.h-bar-item { display:flex; align-items:center; gap:10px; margin-bottom:8px; font-size:0.82rem; }
+.h-bar-wrap { flex:1; background:var(--surface); border-radius:99px; height:10px; overflow:hidden; }
+.h-bar-fill { height:100%; border-radius:99px; transition:width 0.6s ease; }
+.donut-wrap { display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+.legend-item { display:flex; align-items:center; gap:6px; font-size:0.80rem; }
+.legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'analytics';
+initApp({ sections:['students','attendance','behavior','grades'], onReady: renderAnalytics });
+
+function renderAnalytics() {
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">📈 تحليلات</span></div>
+    <div class="ph"><div><div class="ph-title">📈 تحليلات متقدمة</div><div class="ph-sub">رسوم بيانية وإحصاءات تفصيلية للفصل</div></div></div>
+    <div id="analyticsBody"></div>
+  `;
+  buildCharts();
+}
+
+function buildCharts() {
+  const A = window.APP;
+  const attDays = Object.keys(A.attendance).filter(k=>!k.includes('_')).sort().slice(-14);
+
+  // Attendance per day (last 14 days)
+  const dayData = attDays.map(d => {
+    const dayRec = A.attendance[d]||{};
+    let present=0, absent=0, late=0;
+    A.students.forEach(s => {
+      const st=dayRec[s.id]; if(st==='absent') absent++; else if(st==='late') late++; else present++;
+    });
+    const total = A.students.length||1;
+    return { d, pct:Math.round((present/total)*100), present, absent, late };
+  });
+
+  // Per-student attendance
+  const allDays = Object.keys(A.attendance).filter(k=>!k.includes('_'));
+  const studentAtt = A.students.map(s => {
+    let absent=0;
+    allDays.forEach(d=>{ if(A.attendance[d]?.[s.id]==='absent') absent++; });
+    const pct = allDays.length ? Math.round(((allDays.length-absent)/allDays.length)*100) : 100;
+    return { ...s, pct, absent };
+  }).sort((a,b)=>b.pct-a.pct);
+
+  // Behavior distribution
+  const behCounts = [0,0,0,0,0];
+  Object.values(A.behavior).forEach(day => {
+    A.students.forEach(s => {
+      const st=day[s.id]?.stars;
+      if(st>=1&&st<=5) behCounts[st-1]++;
+    });
+  });
+  const totalBeh = behCounts.reduce((a,b)=>a+b,0)||1;
+
+  // Attendance overview
+  let totalPresent=0, totalAbsent=0, totalLate=0;
+  allDays.forEach(d => {
+    A.students.forEach(s => {
+      const st=A.attendance[d]?.[s.id];
+      if(st==='absent') totalAbsent++; else if(st==='late') totalLate++; else totalPresent++;
+    });
+  });
+  const grandTotal = (totalPresent+totalAbsent+totalLate)||1;
+
+  const container = document.getElementById('analyticsBody');
+  const maxPct = dayData.length ? Math.max(...dayData.map(d=>d.pct),1) : 100;
+
+  container.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+
+      <!-- Attendance trend -->
+      <div class="chart-card" style="grid-column:1/-1;">
+        <h3>📅 نسبة الحضور اليومي (آخر 14 يوم)</h3>
+        ${dayData.length ? `
+          <div class="bar-chart">
+            ${dayData.map(d=>`
+              <div class="bar-wrap">
+                <div class="bar" data-val="${d.pct}%"
+                  style="height:${(d.pct/maxPct)*100}%;background:${d.pct>=80?'#10b981':d.pct>=60?'#f59e0b':'#ef4444'};">
+                </div>
+                <div class="bar-label">${d.d.slice(5)}</div>
+              </div>`).join('')}
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">
+            <span class="legend-item"><div class="legend-dot" style="background:#10b981;"></div>≥80%</span>
+            <span class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div>60-79%</span>
+            <span class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div>&lt;60%</span>
+          </div>`
+          : '<div style="text-align:center;padding:40px;color:var(--muted);">لا توجد بيانات حضور بعد</div>'}
+      </div>
+
+      <!-- Attendance distribution -->
+      <div class="chart-card">
+        <h3>🍕 توزيع الحضور الكلي</h3>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          ${[
+            {label:'حاضر', val:totalPresent, color:'#10b981'},
+            {label:'غائب', val:totalAbsent, color:'#ef4444'},
+            {label:'متأخر',val:totalLate,   color:'#f59e0b'},
+          ].map(item=>`
+            <div class="h-bar-item">
+              <span style="min-width:48px;color:var(--ink2);font-weight:700;">${item.label}</span>
+              <div class="h-bar-wrap"><div class="h-bar-fill" style="width:${(item.val/grandTotal)*100}%;background:${item.color};"></div></div>
+              <span style="min-width:40px;font-weight:800;color:${item.color};">${item.val}</span>
+              <span style="font-size:0.75rem;color:var(--muted);">${Math.round((item.val/grandTotal)*100)}%</span>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- Behavior stars distribution -->
+      <div class="chart-card">
+        <h3>⭐ توزيع تقييمات السلوك</h3>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          ${behCounts.map((c,i)=>`
+            <div class="h-bar-item">
+              <span style="min-width:56px;font-weight:700;">${'⭐'.repeat(i+1)}</span>
+              <div class="h-bar-wrap"><div class="h-bar-fill" style="width:${(c/totalBeh)*100}%;background:#f59e0b;"></div></div>
+              <span style="min-width:30px;font-weight:800;">${c}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Per student attendance -->
+    <div class="chart-card">
+      <h3>👥 نسبة حضور الطلاب (مرتّب تنازلياً)</h3>
+      <div style="display:flex;flex-direction:column;gap:8px;max-height:320px;overflow-y:auto;">
+        ${studentAtt.map(s=>`
+          <div class="h-bar-item">
+            <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--sky),var(--plum));color:white;font-size:0.72rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${(s.name||s.n||'؟').charAt(0)}</div>
+            <span style="min-width:90px;font-weight:700;font-size:0.80rem;">${esc((s.name||s.n||'طالب').split(' ')[0])}</span>
+            <div class="h-bar-wrap"><div class="h-bar-fill" style="width:${s.pct}%;background:${s.pct>=80?'#10b981':s.pct>=60?'#f59e0b':'#ef4444'};"></div></div>
+            <span style="min-width:38px;font-weight:800;font-size:0.80rem;color:${s.pct>=80?'#10b981':s.pct>=60?'#f59e0b':'#ef4444'};">${s.pct}%</span>
+          </div>`).join('')}
+      </div>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>

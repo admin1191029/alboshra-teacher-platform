@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>وضع الحصة — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.lesson-header {
+  position: sticky; top: 0; z-index: 100;
+  background: linear-gradient(135deg, var(--sky), var(--plum));
+  color: white; padding: 12px 20px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+}
+.lesson-title { font-size: 1.1rem; font-weight: 900; flex: 1; min-width: 120px; }
+.timer-display {
+  font-size: 1.8rem; font-weight: 900; font-family: monospace;
+  background: rgba(255,255,255,0.18); padding: 4px 14px;
+  border-radius: 10px; letter-spacing: 2px; cursor: pointer;
+  user-select: none; transition: background 0.2s;
+}
+.timer-display:hover { background: rgba(255,255,255,0.28); }
+.timer-display.warning { color: #fca5a5; animation: blink 1s infinite; }
+@keyframes blink { 50% { opacity: 0.5; } }
+
+.stats-bar {
+  display: flex; gap: 10px; padding: 10px 16px;
+  background: rgba(255,255,255,0.55); border-bottom: 1px solid var(--border);
+  flex-wrap: wrap; align-items: center;
+}
+
+.student-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px; padding: 16px 16px 100px;
+}
+.student-card {
+  background: rgba(255,255,255,0.72); backdrop-filter: blur(8px);
+  border: 2px solid var(--border); border-radius: 14px;
+  padding: 12px 8px; text-align: center; cursor: default;
+  transition: all 0.18s; position: relative;
+}
+.student-card.present { border-color: #10b981; background: rgba(16,185,129,0.08); }
+.student-card.absent  { border-color: #ef4444; background: rgba(239,68,68,0.08); opacity: 0.75; }
+.student-card.late    { border-color: #f59e0b; background: rgba(245,158,11,0.08); }
+.student-card.selected { box-shadow: 0 0 0 3px var(--sky); transform: scale(1.04); }
+.sc-num { position:absolute; top:5px; right:8px; font-size:0.68rem; color:var(--muted2); }
+.sc-avatar {
+  width: 48px; height: 48px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--sky), var(--plum));
+  color: white; font-size: 1.3rem; font-weight: 900;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 7px;
+}
+.sc-name { font-size: 0.80rem; font-weight: 800; color: var(--ink2); margin-bottom: 5px; line-height: 1.2; }
+.sc-stars { display: flex; gap: 2px; justify-content: center; margin-bottom: 5px; }
+.sc-star { font-size: 0.9rem; cursor: pointer; transition: transform 0.1s; }
+.sc-star:hover { transform: scale(1.4); }
+.sc-att { display: flex; gap: 3px; justify-content: center; }
+.sc-att-btn {
+  width: 26px; height: 22px; border-radius: 6px; border: none;
+  font-size: 0.65rem; cursor: pointer; font-weight: 800; transition: all 0.15s;
+}
+.sc-att-btn.p { background: rgba(16,185,129,0.18); color: #059669; }
+.sc-att-btn.p:hover, .student-card.present .sc-att-btn.p { background:#10b981; color:white; }
+.sc-att-btn.a { background: rgba(239,68,68,0.15); color: #dc2626; }
+.sc-att-btn.a:hover, .student-card.absent .sc-att-btn.a  { background:#ef4444; color:white; }
+.sc-att-btn.l { background: rgba(245,158,11,0.15); color: #d97706; }
+.sc-att-btn.l:hover, .student-card.late .sc-att-btn.l    { background:#f59e0b; color:white; }
+
+.lesson-toolbar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+  background: rgba(255,255,255,0.92); backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border);
+  padding: 10px 16px;
+  display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap;
+}
+
+/* Picker overlay */
+.picker-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(10,20,50,0.85); backdrop-filter: blur(8px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.picker-card {
+  background: white; border-radius: 24px;
+  padding: 40px 56px; text-align: center;
+  box-shadow: 0 40px 100px rgba(0,0,0,0.3);
+  animation: popIn 0.3s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes popIn { from{opacity:0;transform:scale(0.5)} to{opacity:1;transform:scale(1)} }
+.picker-avatar {
+  width: 90px; height: 90px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--sky), var(--plum));
+  color: white; font-size: 2.4rem; font-weight: 900;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 16px; box-shadow: 0 8px 32px rgba(21,101,192,0.4);
+}
+.picker-name { font-size: 1.8rem; font-weight: 900; color: var(--ink2); margin-bottom: 6px; }
+.picker-num  { font-size: 0.88rem; color: var(--muted); margin-bottom: 20px; }
+
+/* Fullscreen */
+body.lesson-fs .sidebar,
+body.lesson-fs .topbar,
+body.lesson-fs .bottom-nav,
+body.lesson-fs .main-content { margin: 0 !important; }
+body.lesson-fs .sidebar,
+body.lesson-fs .topbar,
+body.lesson-fs .bottom-nav { display: none !important; }
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+<main class="main-content" id="mainContent" style="padding:0;padding-bottom:80px;">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+
+<!-- Random Picker -->
+<div id="pickerOverlay" class="picker-overlay" style="display:none;" onclick="closePicker()">
+  <div class="picker-card" onclick="event.stopPropagation()">
+    <div class="picker-avatar" id="pickerAvatar">؟</div>
+    <div class="picker-name" id="pickerName">...</div>
+    <div class="picker-num"  id="pickerNum"></div>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+      <button class="btn btn-primary" onclick="pickRandom()">🎲 مرة أخرى</button>
+      <button class="btn btn-ghost"   onclick="closePicker()">✓ تم</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'lesson';
+
+const sess = {
+  att: {},      // sid → 'present'|'absent'|'late'
+  beh: {},      // sid → 0-5 stars
+  secs: 0,
+  running: false,
+  interval: null,
+  mode: 'stopwatch',  // 'stopwatch'|'countdown'
+  cdStart: 300,
+  fs: false,
+};
+
+initApp({ sections: ['students','attendance','behavior'], onReady: renderLesson });
+
+function renderLesson() {
+  const A = window.APP;
+  const mc = document.getElementById('mainContent');
+  if (!A.students.length) {
+    mc.innerHTML = `<div style="text-align:center;padding:60px 20px;">
+      <div style="font-size:3rem;margin-bottom:14px;">👥</div>
+      <div style="font-size:1.1rem;font-weight:800;color:var(--ink2);margin-bottom:8px;">لا يوجد طلاب في هذا الفصل</div>
+      <a href="students.html" class="btn btn-primary">➕ إضافة طلاب أولاً</a>
+    </div>`;
+    return;
+  }
+
+  const today = todayStr();
+  const saved = A.attendance[today] || {};
+  const savedBeh = A.behavior[today] || {};
+  A.students.forEach(s => {
+    sess.att[s.id] = saved[s.id] || 'present';
+    sess.beh[s.id] = savedBeh[s.id]?.stars || 0;
+  });
+
+  mc.innerHTML = `
+    <div class="lesson-header" id="lessonHdr">
+      <button class="btn btn-sm" style="background:rgba(255,255,255,0.18);color:white;border:1px solid rgba(255,255,255,0.3);" onclick="goBack()">← رجوع</button>
+      <div class="lesson-title">🖥️ وضع الحصة — ${esc(A.activeClassName)}</div>
+      <div class="timer-display" id="timerDisp" onclick="toggleTimer()" title="اضغط للإيقاف/التشغيل">00:00</div>
+      <button class="btn btn-sm" style="background:rgba(255,255,255,0.18);color:white;border:none;" onclick="resetTimer()" title="إعادة ضبط">↺</button>
+      <button class="btn btn-sm" style="background:rgba(255,255,255,0.18);color:white;border:none;" onclick="toggleFS()" id="fsBtn">⛶</button>
+    </div>
+
+    <div class="stats-bar">
+      <span class="badge badge-green" id="stP">✅ حاضر: 0</span>
+      <span class="badge badge-red"   id="stA">❌ غائب: 0</span>
+      <span class="badge badge-yellow" id="stL">⏰ متأخر: 0</span>
+      <span class="badge badge-blue">👥 الإجمالي: ${A.students.length}</span>
+      <span style="margin-right:auto;font-size:0.78rem;color:var(--muted);">اضغط ✓✗⏰ لتسجيل الحضور، والنجوم للسلوك</span>
+    </div>
+
+    <div class="student-grid" id="studentGrid"></div>
+
+    <div class="lesson-toolbar">
+      <button class="btn btn-primary" onclick="pickRandom()">🎲 اختيار عشوائي</button>
+      <button class="btn btn-ghost btn-sm" onclick="markAll('present')">✅ الكل حاضر</button>
+      <button class="btn btn-ghost btn-sm" onclick="markAll('absent')">❌ الكل غائب</button>
+      <button class="btn btn-ghost btn-sm" onclick="setCD(300)">⏱️ 5د</button>
+      <button class="btn btn-ghost btn-sm" onclick="setCD(600)">⏱️ 10د</button>
+      <button class="btn btn-ghost btn-sm" onclick="setCD(900)">⏱️ 15د</button>
+      <button class="btn btn-success btn-sm" onclick="saveSession()">💾 حفظ</button>
+      <button class="btn btn-danger btn-sm" onclick="endLesson()">🏁 إنهاء الحصة</button>
+    </div>
+  `;
+
+  renderGrid();
+  updateStats();
+  startStopwatch();
+}
+
+function renderGrid() {
+  const A = window.APP;
+  document.getElementById('studentGrid').innerHTML = A.students.map((s, i) => {
+    const att = sess.att[s.id] || 'present';
+    const stars = sess.beh[s.id] || 0;
+    const nm = s.name || s.n || 'طالب';
+    return `<div class="student-card ${att}" id="sc_${s.id}">
+      <div class="sc-num">${i+1}</div>
+      <div class="sc-avatar">${nm.charAt(0)}</div>
+      <div class="sc-name">${esc(nm)}</div>
+      <div class="sc-stars">${[1,2,3,4,5].map(x=>`<span class="sc-star" onclick="toggleStar('${s.id}',${x})">${x<=stars?'⭐':'☆'}</span>`).join('')}</div>
+      <div class="sc-att">
+        <button class="sc-att-btn p" onclick="setAtt('${s.id}','present')">✓</button>
+        <button class="sc-att-btn a" onclick="setAtt('${s.id}','absent')">✗</button>
+        <button class="sc-att-btn l" onclick="setAtt('${s.id}','late')">⏰</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function setAtt(sid, status) {
+  sess.att[sid] = status;
+  const card = document.getElementById(`sc_${sid}`);
+  if (card) card.className = `student-card ${status}`;
+  updateStats();
+}
+
+function toggleStar(sid, num) {
+  sess.beh[sid] = sess.beh[sid] === num ? num - 1 : num;
+  const card = document.getElementById(`sc_${sid}`);
+  if (!card) return;
+  const stars = sess.beh[sid];
+  card.querySelector('.sc-stars').innerHTML = [1,2,3,4,5].map(x=>
+    `<span class="sc-star" onclick="toggleStar('${sid}',${x})">${x<=stars?'⭐':'☆'}</span>`
+  ).join('');
+}
+
+function markAll(status) {
+  window.APP.students.forEach(s => setAtt(s.id, status));
+}
+
+function updateStats() {
+  const A = window.APP;
+  let p=0, a=0, l=0;
+  A.students.forEach(s => {
+    const st = sess.att[s.id]||'present';
+    if(st==='present') p++; else if(st==='absent') a++; else l++;
+  });
+  const sp=document.getElementById('stP'), sa=document.getElementById('stA'), sl=document.getElementById('stL');
+  if(sp) sp.textContent=`✅ حاضر: ${p}`;
+  if(sa) sa.textContent=`❌ غائب: ${a}`;
+  if(sl) sl.textContent=`⏰ متأخر: ${l}`;
+}
+
+/* ── Timer ── */
+function startStopwatch() {
+  sess.secs = 0; sess.running = true; sess.mode = 'stopwatch';
+  runTick();
+}
+function toggleTimer() {
+  sess.running = !sess.running;
+  if (sess.running) runTick();
+}
+function resetTimer() {
+  sess.running = false;
+  clearInterval(sess.interval);
+  sess.secs = sess.mode === 'countdown' ? sess.cdStart : 0;
+  updateTimerUI();
+}
+function setCD(secs) {
+  sess.mode = 'countdown'; sess.cdStart = secs; sess.secs = secs;
+  sess.running = true;
+  clearInterval(sess.interval);
+  runTick();
+  toast(`⏱️ مؤقت ${secs/60} دقيقة`, 'info');
+}
+function runTick() {
+  clearInterval(sess.interval);
+  sess.interval = setInterval(() => {
+    if (!sess.running) return;
+    if (sess.mode === 'stopwatch') { sess.secs++; }
+    else {
+      sess.secs--;
+      if (sess.secs <= 0) {
+        sess.secs = 0; sess.running = false;
+        clearInterval(sess.interval);
+        toast('⏰ انتهى الوقت!', 'warning', 5000);
+      }
+    }
+    updateTimerUI();
+  }, 1000);
+}
+function updateTimerUI() {
+  const el = document.getElementById('timerDisp');
+  if (!el) return;
+  const m = Math.floor(sess.secs/60), s = sess.secs%60;
+  el.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  el.classList.toggle('warning', sess.mode==='countdown' && sess.secs<=30 && sess.secs>0);
+}
+
+/* ── Random Picker ── */
+function pickRandom() {
+  const A = window.APP;
+  const pool = A.students.filter(s => sess.att[s.id] !== 'absent');
+  if (!pool.length) { toast('لا يوجد طلاب حاضرون', 'warning'); return; }
+  document.getElementById('pickerOverlay').style.display = 'flex';
+  let rolls = 0;
+  const roll = setInterval(() => {
+    const r = pool[Math.floor(Math.random()*pool.length)];
+    const nm = r.name||r.n||'طالب';
+    document.getElementById('pickerAvatar').textContent = nm.charAt(0);
+    document.getElementById('pickerName').textContent = nm;
+    if (++rolls >= 18) {
+      clearInterval(roll);
+      const final = pool[Math.floor(Math.random()*pool.length)];
+      const fnm = final.name||final.n||'طالب';
+      document.getElementById('pickerAvatar').textContent = fnm.charAt(0);
+      document.getElementById('pickerName').textContent = fnm;
+      document.getElementById('pickerNum').textContent = `الرقم: ${A.students.indexOf(final)+1}`;
+      document.querySelectorAll('.student-card').forEach(c=>c.classList.remove('selected'));
+      const card = document.getElementById(`sc_${final.id}`);
+      if (card) { card.classList.add('selected'); card.scrollIntoView({behavior:'smooth',block:'center'}); }
+    }
+  }, 80);
+}
+function closePicker() { document.getElementById('pickerOverlay').style.display='none'; }
+
+/* ── Fullscreen ── */
+function toggleFS() {
+  sess.fs = !sess.fs;
+  document.body.classList.toggle('lesson-fs', sess.fs);
+  document.getElementById('fsBtn').title = sess.fs ? 'خروج من ملء الشاشة' : 'ملء الشاشة';
+}
+
+/* ── Save / End ── */
+async function saveSession() {
+  const A = window.APP;
+  const today = todayStr();
+  if (!A.attendance[today]) A.attendance[today] = {};
+  A.students.forEach(s => A.attendance[today][s.id] = sess.att[s.id]||'present');
+  await saveSection('attendance');
+  if (!A.behavior[today]) A.behavior[today] = {};
+  A.students.forEach(s => {
+    if (sess.beh[s.id] > 0)
+      A.behavior[today][s.id] = { stars: sess.beh[s.id], at: new Date().toISOString() };
+  });
+  await saveSection('behavior');
+  toast('✅ تم حفظ الحضور والسلوك', 'success');
+}
+async function endLesson() {
+  await saveSession();
+  clearInterval(sess.interval);
+  toast('🏁 انتهت الحصة', 'success', 3000);
+  setTimeout(() => window.location.href = 'dashboard.html', 1800);
+}
+function goBack() { clearInterval(sess.interval); window.location.href='dashboard.html'; }
+
+window.setAtt=setAtt; window.toggleStar=toggleStar; window.markAll=markAll;
+window.pickRandom=pickRandom; window.closePicker=closePicker;
+window.toggleTimer=toggleTimer; window.resetTimer=resetTimer; window.setCD=setCD;
+window.toggleFS=toggleFS; window.saveSession=saveSession; window.endLesson=endLesson;
+window.goBack=goBack;
+</script>
+</body>
+</html>

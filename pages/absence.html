@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>تقرير الغياب — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.abs-table { width:100%; border-collapse:collapse; font-size:0.84rem; }
+.abs-table th { background:var(--accent-soft); color:var(--ink2); font-weight:800; padding:10px 14px; text-align:right; border-bottom:2px solid var(--border); }
+.abs-table td { padding:9px 14px; border-bottom:1px solid var(--border); vertical-align:middle; }
+.abs-table tr:hover td { background:var(--accent-soft); }
+.abs-bar-wrap { display:inline-block; width:80px; height:8px; background:var(--surface); border-radius:99px; overflow:hidden; vertical-align:middle; margin-right:6px; }
+.abs-bar { height:100%; border-radius:99px; }
+.status-badge { padding:3px 10px; border-radius:99px; font-size:0.72rem; font-weight:800; }
+.status-good { background:rgba(16,185,129,0.15); color:#059669; }
+.status-warn { background:rgba(245,158,11,0.15); color:#d97706; }
+.status-danger { background:rgba(239,68,68,0.15); color:#dc2626; }
+.calendar-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(90px,1fr)); gap:6px; margin-top:10px; }
+.cal-day { padding:6px 8px; border-radius:8px; font-size:0.72rem; font-weight:700; text-align:center; }
+.cal-present { background:rgba(16,185,129,0.12); color:#059669; border:1px solid rgba(16,185,129,0.25); }
+.cal-absent  { background:rgba(239,68,68,0.12); color:#dc2626; border:1px solid rgba(239,68,68,0.25); }
+.cal-late    { background:rgba(245,158,11,0.12); color:#d97706; border:1px solid rgba(245,158,11,0.25); }
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'absence';
+let selectedStudent = null;
+
+initApp({ sections:['students','attendance'], onReady: renderAbsence });
+
+function renderAbsence() {
+  const A = window.APP;
+  const attDays = Object.keys(A.attendance).filter(k=>!k.includes('_')).sort();
+  const total = attDays.length;
+
+  const stats = A.students.map((s,i) => {
+    let present=0, absent=0, late=0;
+    const absDays=[], lateDays=[];
+    attDays.forEach(d => {
+      const st = A.attendance[d]?.[s.id];
+      if(st==='absent'){ absent++; absDays.push(d); }
+      else if(st==='late'){ late++; lateDays.push(d); }
+      else present++;
+    });
+    const pct = total ? Math.round((absent/total)*100) : 0;
+    return { ...s, idx:i+1, present, absent, late, pct, absDays, lateDays };
+  }).sort((a,b)=>b.absent-a.absent);
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">🚫 تقرير الغياب</span></div>
+    <div class="ph">
+      <div><div class="ph-title">🚫 تقرير الغياب</div><div class="ph-sub">إجمالي أيام الغياب والتأخر لكل طالب — ${total} يوم مسجّل</div></div>
+      <button class="btn btn-ghost btn-sm" onclick="exportAbs()">📤 تصدير CSV</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:18px;">
+      ${[
+        {label:'إجمالي الطلاب', val:A.students.length, color:'#1565c0'},
+        {label:'أيام مسجّلة',   val:total,             color:'#7c3aed'},
+        {label:'غياب > 3 أيام', val:stats.filter(s=>s.absent>3).length, color:'#ef4444'},
+        {label:'لا غياب',       val:stats.filter(s=>s.absent===0).length, color:'#10b981'},
+      ].map(k=>`<div class="kpi-card">
+        <div class="kpi-val" style="color:${k.color};">${k.val}</div>
+        <div class="kpi-label">${k.label}</div>
+      </div>`).join('')}
+    </div>
+
+    <div class="card" style="padding:0;overflow:auto;margin-bottom:16px;">
+      <table class="abs-table">
+        <thead>
+          <tr>
+            <th>#</th><th>الاسم</th><th>الحاضر</th><th>الغائب</th>
+            <th>المتأخر</th><th>نسبة الغياب</th><th>الحالة</th><th>تفاصيل</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${stats.map(s=>{
+            const nm=s.name||s.n||'طالب';
+            const color=s.pct===0?'#10b981':s.pct<=10?'#10b981':s.pct<=20?'#f59e0b':'#ef4444';
+            const statusCls=s.pct===0||s.pct<=10?'status-good':s.pct<=20?'status-warn':'status-danger';
+            const statusTxt=s.pct===0?'ممتاز':s.pct<=10?'جيد':s.pct<=20?'تحذير':'خطر';
+            return `<tr onclick="showDetail('${s.id}')" style="cursor:pointer;">
+              <td style="color:var(--muted2);">${s.idx}</td>
+              <td><div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--sky),var(--plum));color:white;font-size:0.75rem;font-weight:900;display:flex;align-items:center;justify-content:center;">${nm.charAt(0)}</div>
+                <span style="font-weight:700;">${esc(nm)}</span>
+              </div></td>
+              <td style="color:#10b981;font-weight:700;">${s.present}</td>
+              <td style="color:${s.absent>0?'#dc2626':'var(--ink)'};font-weight:800;">${s.absent}</td>
+              <td style="color:${s.late>0?'#d97706':'var(--ink)'};">${s.late}</td>
+              <td>
+                <div class="abs-bar-wrap"><div class="abs-bar" style="width:${Math.min(100,s.pct*3)}%;background:${color};"></div></div>
+                <span style="font-weight:800;color:${color};">${s.pct}%</span>
+              </td>
+              <td><span class="status-badge ${statusCls}">${statusTxt}</span></td>
+              <td><button class="btn btn-ghost btn-sm">📅 عرض</button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div id="detailPanel"></div>
+  `;
+
+  window._absStats = stats;
+}
+
+function showDetail(sid) {
+  const s = (window._absStats||[]).find(x=>x.id===sid);
+  if(!s) return;
+  const nm = s.name||s.n||'طالب';
+  document.getElementById('detailPanel').innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <h3>📅 تفاصيل غياب: ${esc(nm)}</h3>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('detailPanel').innerHTML=''">✕</button>
+      </div>
+      <div class="card-body">
+        ${s.absent===0&&s.late===0
+          ? '<div style="color:var(--mint);font-weight:800;text-align:center;padding:20px;">✅ لا يوجد غياب أو تأخر!</div>'
+          : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div>
+              <div style="font-weight:800;color:#dc2626;margin-bottom:8px;">❌ أيام الغياب (${s.absent})</div>
+              <div class="calendar-grid">${s.absDays.map(d=>`<div class="cal-day cal-absent">${d}</div>`).join('')||'لا يوجد'}</div>
+            </div>
+            <div>
+              <div style="font-weight:800;color:#d97706;margin-bottom:8px;">⏰ أيام التأخر (${s.late})</div>
+              <div class="calendar-grid">${s.lateDays.map(d=>`<div class="cal-day cal-late">${d}</div>`).join('')||'لا يوجد'}</div>
+            </div>
+          </div>`}
+      </div>
+    </div>`;
+  document.getElementById('detailPanel').scrollIntoView({behavior:'smooth'});
+}
+
+function exportAbs() {
+  const stats = window._absStats||[];
+  const rows=[['#','الاسم','حاضر','غائب','متأخر','نسبة الغياب%']];
+  stats.forEach(s=>rows.push([s.idx,s.name||s.n||'',s.present,s.absent,s.late,s.pct]));
+  const csv=rows.map(r=>r.join(',')).join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`تقرير_الغياب_${todayStr()}.csv`;a.click();
+  toast('تم التصدير','success');
+}
+
+window.showDetail=showDetail; window.exportAbs=exportAbs;
+</script>
+</body>
+</html>

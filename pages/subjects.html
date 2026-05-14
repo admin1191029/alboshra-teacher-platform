@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>إدارة المواد والمهارات — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.subject-card { background:var(--card); backdrop-filter:var(--glass-blur); border:1px solid var(--glass-border); border-radius:var(--r); padding:18px 20px; box-shadow:var(--shadow-sm); }
+.skill-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; background:var(--accent-soft); border:1px solid var(--border); border-radius:99px; font-size:0.76rem; font-weight:700; margin:3px; }
+.skill-chip button { background:none; border:none; cursor:pointer; color:var(--muted); font-size:0.80rem; padding:0; line-height:1; }
+.skill-chip button:hover { color:#ef4444; }
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+
+<div class="modal-overlay" id="subModal">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-header">
+      <h3 id="subModalTitle">➕ إضافة مادة</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('subModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="fg"><label>اسم المادة *</label><input type="text" id="subName" placeholder="مثل: الرياضيات"></div>
+        <div class="fg"><label>الأيقونة</label><input type="text" id="subIcon" placeholder="📐" maxlength="4"></div>
+        <div class="fg" style="grid-column:1/-1;"><label>اللون</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+            ${['#1565c0','#7c3aed','#059669','#d97706','#dc2626','#0d9488','#db2777','#64748b'].map(c=>
+              `<div onclick="selectColor('${c}')" style="width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:3px solid transparent;" class="color-opt" data-color="${c}"></div>`
+            ).join('')}
+          </div>
+          <input type="hidden" id="subColor" value="#1565c0">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveSubject()">💾 حفظ</button>
+      <button class="btn btn-ghost" onclick="closeModal('subModal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'subjects';
+let editSubId = null;
+
+initApp({ sections:['subjects'], onReady: renderSubjects });
+
+function renderSubjects() {
+  const A = window.APP;
+  if (!A.subjects || !A.subjects.length) A.subjects = defaultSubjects();
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">📚 إدارة المواد والمهارات</span></div>
+    <div class="ph">
+      <div><div class="ph-title">📚 إدارة المواد والمهارات</div><div class="ph-sub">${A.subjects.length} مادة دراسية</div></div>
+      <button class="btn btn-primary btn-sm" onclick="openAddSub()">➕ مادة جديدة</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;" id="subjectsList"></div>
+  `;
+  renderList();
+}
+
+function renderList() {
+  const A = window.APP;
+  const el = document.getElementById('subjectsList');
+  if (!el) return;
+  el.innerHTML = A.subjects.map(s => `
+    <div class="subject-card">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <div style="width:42px;height:42px;border-radius:12px;background:${s.color||'#1565c0'}20;display:flex;align-items:center;justify-content:center;font-size:1.4rem;">${s.icon||'📚'}</div>
+        <div style="flex:1;">
+          <div style="font-weight:800;color:var(--ink2);">${esc(s.name)}</div>
+          <div style="font-size:0.75rem;color:var(--muted);">${(s.skills||[]).length} مهارة</div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost btn-sm" onclick="editSub('${s.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteSub('${s.id}')">🗑️</button>
+        </div>
+      </div>
+      <div style="margin-bottom:10px;">
+        ${(s.skills||[]).map(sk=>`<span class="skill-chip">${esc(sk)}<button onclick="removeSkill('${s.id}','${esc(sk)}')">✕</button></span>`).join('')}
+        ${!(s.skills||[]).length?'<span style="font-size:0.78rem;color:var(--muted);">لا توجد مهارات بعد</span>':''}
+      </div>
+      <div style="display:flex;gap:6px;">
+        <input type="text" id="skill_${s.id}" placeholder="أضف مهارة..." style="flex:1;padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:'Tajawal',sans-serif;font-size:0.80rem;"
+          onkeydown="if(event.key==='Enter') addSkill('${s.id}')">
+        <button class="btn btn-primary btn-sm" onclick="addSkill('${s.id}')">+</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openAddSub() {
+  editSubId = null;
+  document.getElementById('subModalTitle').textContent = '➕ إضافة مادة';
+  document.getElementById('subName').value='';
+  document.getElementById('subIcon').value='';
+  document.getElementById('subColor').value='#1565c0';
+  selectColor('#1565c0');
+  openModal('subModal');
+}
+
+function editSub(id) {
+  const s = (window.APP.subjects||[]).find(x=>x.id===id);
+  if (!s) return;
+  editSubId = id;
+  document.getElementById('subModalTitle').textContent = '✏️ تعديل المادة';
+  document.getElementById('subName').value = s.name||'';
+  document.getElementById('subIcon').value = s.icon||'';
+  document.getElementById('subColor').value = s.color||'#1565c0';
+  selectColor(s.color||'#1565c0');
+  openModal('subModal');
+}
+
+function selectColor(c) {
+  document.getElementById('subColor').value = c;
+  document.querySelectorAll('.color-opt').forEach(el => {
+    el.style.borderColor = el.dataset.color===c ? '#000' : 'transparent';
+  });
+}
+
+async function saveSubject() {
+  const A = window.APP;
+  const name = document.getElementById('subName').value.trim();
+  if (!name) { toast('أدخل اسم المادة','warning'); return; }
+  if (!A.subjects) A.subjects=[];
+  const entry = {
+    id: editSubId||genId('sub'),
+    name, icon: document.getElementById('subIcon').value.trim()||'📚',
+    color: document.getElementById('subColor').value,
+    skills: editSubId ? (A.subjects.find(s=>s.id===editSubId)?.skills||[]) : []
+  };
+  if (editSubId) { const i=A.subjects.findIndex(s=>s.id===editSubId); if(i>=0) A.subjects[i]=entry; }
+  else A.subjects.push(entry);
+  await saveSection('subjects');
+  closeModal('subModal'); renderList();
+  toast('✅ تم الحفظ','success');
+}
+
+async function deleteSub(id) {
+  if (!confirm('حذف هذه المادة؟')) return;
+  window.APP.subjects = (window.APP.subjects||[]).filter(s=>s.id!==id);
+  await saveSection('subjects'); renderList();
+  toast('تم الحذف','info');
+}
+
+async function addSkill(subId) {
+  const input = document.getElementById(`skill_${subId}`);
+  if (!input) return;
+  const val = input.value.trim();
+  if (!val) return;
+  const A = window.APP;
+  const sub = A.subjects.find(s=>s.id===subId);
+  if (!sub) return;
+  if (!sub.skills) sub.skills=[];
+  if (!sub.skills.includes(val)) sub.skills.push(val);
+  await saveSection('subjects'); input.value=''; renderList();
+}
+
+async function removeSkill(subId, skill) {
+  const A = window.APP;
+  const sub = A.subjects.find(s=>s.id===subId);
+  if (sub) { sub.skills=(sub.skills||[]).filter(sk=>sk!==skill); await saveSection('subjects'); renderList(); }
+}
+
+window.openAddSub=openAddSub; window.editSub=editSub; window.saveSubject=saveSubject;
+window.deleteSub=deleteSub; window.addSkill=addSkill; window.removeSkill=removeSkill;
+window.selectColor=selectColor;
+</script>
+</body>
+</html>

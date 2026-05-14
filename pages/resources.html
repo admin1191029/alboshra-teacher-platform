@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>مكتبة الموارد — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.res-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }
+.res-card {
+  background:var(--card); backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-border); border-radius:var(--r);
+  padding:16px 18px; box-shadow:var(--shadow-sm);
+  display:flex; flex-direction:column; gap:8px; transition:all 0.18s;
+}
+.res-card:hover { transform:translateY(-2px); box-shadow:var(--shadow); }
+.res-type-icon { font-size:1.8rem; }
+.res-title { font-size:0.92rem; font-weight:800; color:var(--ink2); }
+.res-desc  { font-size:0.80rem; color:var(--muted); flex:1; }
+.res-url   { font-size:0.75rem; color:var(--sky); word-break:break-all; font-family:monospace; }
+.res-footer { display:flex; gap:8px; align-items:center; margin-top:4px; }
+.type-badge {
+  display:inline-block; padding:2px 8px; border-radius:99px;
+  font-size:0.70rem; font-weight:800;
+}
+.type-link   { background:rgba(21,101,192,0.12); color:#1565c0; }
+.type-video  { background:rgba(239,68,68,0.12); color:#dc2626; }
+.type-file   { background:rgba(16,185,129,0.12); color:#059669; }
+.type-note   { background:rgba(245,158,11,0.12); color:#b45309; }
+.filter-bar  { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+.filter-btn  {
+  padding:5px 14px; border-radius:99px; border:1.5px solid var(--border);
+  background:transparent; font-family:'Tajawal',sans-serif; font-size:0.82rem;
+  cursor:pointer; transition:all 0.15s;
+}
+.filter-btn.active { background:var(--sky); color:white; border-color:var(--sky); }
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+
+<!-- Modal إضافة مورد -->
+<div class="modal-overlay" id="resModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <h3 id="resModalTitle">➕ إضافة مورد</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('resModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="fg" style="grid-column:1/-1;">
+          <label>العنوان *</label>
+          <input type="text" id="rTitle" placeholder="اسم المورد">
+        </div>
+        <div class="fg">
+          <label>النوع</label>
+          <select id="rType" style="padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:'Tajawal',sans-serif;background:white;">
+            <option value="link">🔗 رابط</option>
+            <option value="video">🎥 فيديو</option>
+            <option value="file">📄 ملف</option>
+            <option value="note">📝 ملاحظة</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label>المادة</label>
+          <input type="text" id="rSubject" placeholder="مثل: رياضيات، علوم...">
+        </div>
+        <div class="fg" style="grid-column:1/-1;">
+          <label>الرابط / المسار</label>
+          <input type="url" id="rUrl" placeholder="https://..." dir="ltr">
+        </div>
+        <div class="fg" style="grid-column:1/-1;">
+          <label>الوصف</label>
+          <textarea id="rDesc" rows="2" placeholder="وصف مختصر للمورد..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveResource()">💾 حفظ</button>
+      <button class="btn btn-ghost" onclick="closeModal('resModal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'resources';
+let editId = null;
+let activeFilter = 'all';
+
+initApp({ sections: ['resources'], onReady: renderResources });
+
+function renderResources() {
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">☁️ مكتبة الموارد</span></div>
+    <div class="ph">
+      <div><div class="ph-title">☁️ مكتبة الموارد</div><div class="ph-sub">روابط، فيديوهات، ملفات وملاحظات تعليمية</div></div>
+      <button class="btn btn-primary btn-sm" onclick="openAddRes()">➕ إضافة مورد</button>
+    </div>
+    <div class="filter-bar">
+      ${['all','link','video','file','note'].map(t =>
+        `<button class="filter-btn${activeFilter===t?' active':''}" onclick="setFilter('${t}')">
+          ${{all:'الكل',link:'🔗 روابط',video:'🎥 فيديوهات',file:'📄 ملفات',note:'📝 ملاحظات'}[t]}
+        </button>`
+      ).join('')}
+      <input type="text" id="resSearch" placeholder="🔍 بحث..." style="margin-right:auto;padding:6px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:'Tajawal',sans-serif;font-size:0.82rem;" oninput="renderList()">
+    </div>
+    <div id="resList"></div>
+  `;
+  renderList();
+}
+
+function renderList() {
+  const A = window.APP;
+  const q = (document.getElementById('resSearch')?.value||'').trim().toLowerCase();
+  const filtered = (A.resources||[]).filter(r => {
+    if (activeFilter !== 'all' && r.type !== activeFilter) return false;
+    if (q && !( (r.title||'').toLowerCase().includes(q) || (r.desc||'').toLowerCase().includes(q) || (r.subject||'').toLowerCase().includes(q) )) return false;
+    return true;
+  });
+  const icons = { link:'🔗', video:'🎥', file:'📄', note:'📝' };
+  const container = document.getElementById('resList');
+  if (!container) return;
+  if (!filtered.length) {
+    container.innerHTML = `<div style="text-align:center;padding:60px 20px;color:var(--muted);">
+      <div style="font-size:3rem;margin-bottom:12px;">📭</div>
+      <div>لا توجد موارد${activeFilter!=='all'?' من هذا النوع':''}. ابدأ بإضافة أول مورد!</div>
+    </div>`;
+    return;
+  }
+  container.innerHTML = `<div class="res-grid">${filtered.map(r => `
+    <div class="res-card">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="res-type-icon">${icons[r.type]||'📎'}</div>
+        <div>
+          <span class="type-badge type-${r.type}">${{link:'رابط',video:'فيديو',file:'ملف',note:'ملاحظة'}[r.type]||r.type}</span>
+          ${r.subject ? `<span class="badge badge-blue" style="margin-right:4px;font-size:0.68rem;">${esc(r.subject)}</span>` : ''}
+        </div>
+      </div>
+      <div class="res-title">${esc(r.title||'بدون عنوان')}</div>
+      ${r.desc ? `<div class="res-desc">${esc(r.desc)}</div>` : ''}
+      ${r.url ? `<div class="res-url">${esc(r.url)}</div>` : ''}
+      <div class="res-footer">
+        ${r.url ? `<button class="btn btn-primary btn-sm" onclick="window.open('${esc(r.url)}','_blank')">🔗 فتح</button>` : ''}
+        ${r.url ? `<button class="btn btn-ghost btn-sm" onclick="copyUrl('${esc(r.url)}')">📋 نسخ</button>` : ''}
+        <button class="btn btn-ghost btn-sm" onclick="editRes('${r.id}')">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteRes('${r.id}')">🗑️</button>
+      </div>
+    </div>
+  `).join('')}</div>`;
+}
+
+function setFilter(f) {
+  activeFilter = f;
+  document.querySelectorAll('.filter-btn').forEach((btn,i) => {
+    btn.classList.toggle('active', ['all','link','video','file','note'][i] === f);
+  });
+  renderList();
+}
+
+function openAddRes() {
+  editId = null;
+  document.getElementById('resModalTitle').textContent = '➕ إضافة مورد';
+  ['rTitle','rDesc','rUrl','rSubject'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('rType').value='link';
+  openModal('resModal');
+}
+
+function editRes(id) {
+  const r = (window.APP.resources||[]).find(x=>x.id===id);
+  if (!r) return;
+  editId = id;
+  document.getElementById('resModalTitle').textContent = '✏️ تعديل المورد';
+  document.getElementById('rTitle').value = r.title||'';
+  document.getElementById('rDesc').value  = r.desc||'';
+  document.getElementById('rUrl').value   = r.url||'';
+  document.getElementById('rSubject').value = r.subject||'';
+  document.getElementById('rType').value  = r.type||'link';
+  openModal('resModal');
+}
+
+async function saveResource() {
+  const A = window.APP;
+  const title = document.getElementById('rTitle').value.trim();
+  if (!title) { toast('أدخل عنوان المورد', 'warning'); return; }
+  if (!A.resources) A.resources = [];
+  const entry = {
+    id: editId || genId('res'),
+    title,
+    type: document.getElementById('rType').value,
+    subject: document.getElementById('rSubject').value.trim(),
+    url: document.getElementById('rUrl').value.trim(),
+    desc: document.getElementById('rDesc').value.trim(),
+    createdAt: new Date().toISOString()
+  };
+  if (editId) {
+    const idx = A.resources.findIndex(r=>r.id===editId);
+    if (idx>=0) A.resources[idx] = entry;
+  } else {
+    A.resources.unshift(entry);
+  }
+  await saveSection('resources');
+  closeModal('resModal');
+  renderList();
+  toast(editId ? 'تم تحديث المورد ✅' : 'تمت إضافة المورد ✅', 'success');
+}
+
+async function deleteRes(id) {
+  if (!confirm('حذف هذا المورد؟')) return;
+  window.APP.resources = (window.APP.resources||[]).filter(r=>r.id!==id);
+  await saveSection('resources');
+  renderList();
+  toast('تم الحذف', 'info');
+}
+
+function copyUrl(url) {
+  navigator.clipboard?.writeText(url).then(()=>toast('تم نسخ الرابط','success'));
+}
+
+window.openAddRes=openAddRes; window.editRes=editRes; window.saveResource=saveResource;
+window.deleteRes=deleteRes; window.copyUrl=copyUrl; window.setFilter=setFilter;
+</script>
+</body>
+</html>
