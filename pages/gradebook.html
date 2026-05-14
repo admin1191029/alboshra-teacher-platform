@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>دفتر الدرجات — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.grade-table { border-collapse:collapse; width:100%; min-width:600px; }
+.grade-table th { background:rgba(21,101,192,0.08); padding:10px 12px; font-size:0.80rem; font-weight:800; color:var(--sky); border:1px solid var(--border); text-align:center; white-space:nowrap; }
+.grade-table td { padding:8px 10px; border:1px solid var(--border); font-size:0.86rem; text-align:center; vertical-align:middle; }
+.grade-table tr:hover td { background:rgba(21,101,192,0.04); }
+.grade-input {
+  width:60px; padding:4px 6px; text-align:center;
+  border:1px solid var(--border); border-radius:6px;
+  font-family:'Tajawal',sans-serif; font-size:0.86rem;
+  background:rgba(255,255,255,0.60); outline:none;
+  transition:border-color 0.2s;
+}
+.grade-input:focus { border-color:var(--sky3); background:white; }
+.grade-avg { font-weight:900; color:var(--sky); }
+.grade-pass  { color:#059669; font-weight:800; }
+.grade-fail  { color:var(--ember); font-weight:800; }
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+
+<!-- Modal: إضافة عمود -->
+<div class="modal-overlay" id="colModal">
+  <div class="modal-box" style="max-width:380px;">
+    <div class="modal-header">
+      <h3>➕ إضافة عمود درجات</h3>
+      <button class="modal-close" onclick="closeModal('colModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg"><label>اسم العمود</label><input type="text" id="colName" placeholder="مثال: الاختبار الأول" /></div>
+      <div class="fg"><label>الدرجة الكاملة</label><input type="number" id="colMax" value="100" min="1" max="1000" /></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="addColumn()">إضافة</button>
+      <button class="btn btn-ghost" onclick="closeModal('colModal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'gradebook';
+
+initApp({ sections:['students','grades'], onReady: renderGradebook });
+
+function renderGradebook() {
+  const A = window.APP;
+  if (!A.grades) A.grades = { columns:[], rows:{} };
+  const { columns, rows } = A.grades;
+  const students = A.students;
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">📒 دفتر الدرجات</span></div>
+    <div class="ph">
+      <div>
+        <div class="ph-title">📒 دفتر الدرجات</div>
+        <div class="ph-sub">${students.length} طالب · ${columns.length} عمود</div>
+      </div>
+      <div class="ph-actions">
+        <button class="btn btn-primary" onclick="openModal('colModal')">➕ عمود جديد</button>
+        <button class="btn btn-ghost" onclick="saveGrades()">💾 حفظ</button>
+        <button class="btn btn-ghost" onclick="exportCSV()">📤 تصدير CSV</button>
+      </div>
+    </div>
+
+    ${students.length===0 ? `
+      <div class="empty-state">
+        <div class="es-icon">👥</div>
+        <div class="es-title">لا يوجد طلاب</div>
+        <div class="es-sub">أضف طلابك أولاً ثم ابدأ برصد الدرجات</div>
+        <a href="students.html" class="btn btn-primary" style="margin-top:12px;">إضافة طلاب</a>
+      </div>` : `
+    <div class="card">
+      <div class="table-wrap">
+        <table class="grade-table">
+          <thead>
+            <tr>
+              <th style="min-width:140px;text-align:right;">الطالب</th>
+              ${columns.map((c,i)=>`
+                <th>
+                  ${esc(c.name)}<br>
+                  <span style="font-size:0.70rem;opacity:0.7;">/${c.max||100}</span>
+                  <button onclick="deleteCol(${i})" style="margin-right:4px;background:none;border:none;cursor:pointer;color:var(--ember);font-size:0.70rem;" title="حذف">✕</button>
+                </th>`).join('')}
+              ${columns.length ? '<th>المجموع</th><th>المعدل%</th>' : ''}
+            </tr>
+          </thead>
+          <tbody>
+            ${students.map(s=>{
+              const row = rows[s.id] || {};
+              const vals = columns.map(c=>parseFloat(row[c.id])||0);
+              const total = vals.reduce((a,b)=>a+b,0);
+              const maxTotal = columns.reduce((a,c)=>a+(c.max||100),0);
+              const pct = maxTotal ? Math.round(total/maxTotal*100) : 0;
+              return `<tr>
+                <td style="text-align:right;font-weight:700;">${esc(s.name)}</td>
+                ${columns.map(c=>`
+                  <td>
+                    <input class="grade-input" type="number" min="0" max="${c.max||100}"
+                      value="${row[c.id]??''}"
+                      data-stu="${s.id}" data-col="${c.id}"
+                      onchange="updateGrade(this,'${s.id}','${c.id}')"
+                      oninput="updateGrade(this,'${s.id}','${c.id}')" />
+                  </td>`).join('')}
+                ${columns.length ? `
+                  <td class="grade-avg">${total}</td>
+                  <td class="${pct>=50?'grade-pass':'grade-fail'}">${pct}%</td>` : ''}
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`}
+  `;
+}
+
+function updateGrade(input, stuId, colId) {
+  const A = window.APP;
+  if (!A.grades.rows[stuId]) A.grades.rows[stuId] = {};
+  const val = parseFloat(input.value);
+  if (!isNaN(val)) {
+    const col = A.grades.columns.find(c=>c.id===colId);
+    const max = col?.max || 100;
+    A.grades.rows[stuId][colId] = Math.min(val, max);
+    // تحديث مجموع الصف
+    const tr = input.closest('tr');
+    if (tr) {
+      const vals = A.grades.columns.map(c=>parseFloat(A.grades.rows[stuId]?.[c.id])||0);
+      const total = vals.reduce((a,b)=>a+b,0);
+      const maxTotal = A.grades.columns.reduce((a,c)=>a+(c.max||100),0);
+      const pct = maxTotal ? Math.round(total/maxTotal*100) : 0;
+      const cells = tr.querySelectorAll('td');
+      const lastTwo = cells.length - 2;
+      if (cells[lastTwo]) cells[lastTwo].textContent = total;
+      if (cells[lastTwo+1]) {
+        cells[lastTwo+1].textContent = pct+'%';
+        cells[lastTwo+1].className = pct>=50 ? 'grade-pass' : 'grade-fail';
+      }
+    }
+  }
+}
+window.updateGrade = updateGrade;
+
+function addColumn() {
+  const name = document.getElementById('colName').value.trim();
+  const max  = parseInt(document.getElementById('colMax').value)||100;
+  if (!name) { toast('أدخل اسم العمود', 'warning'); return; }
+  const col = { id: genId('col'), name, max };
+  APP.grades.columns.push(col);
+  APP.students.forEach(s => { if (!APP.grades.rows[s.id]) APP.grades.rows[s.id]={}; });
+  document.getElementById('colName').value = '';
+  document.getElementById('colMax').value  = '100';
+  closeModal('colModal');
+  renderGradebook();
+  toast('تمت إضافة العمود', 'success');
+}
+window.addColumn = addColumn;
+
+function deleteCol(idx) {
+  const col = APP.grades.columns[idx];
+  confirm2(`حذف عمود "${col?.name}"؟`, ()=>{
+    APP.grades.columns.splice(idx,1);
+    APP.students.forEach(s => { if (APP.grades.rows[s.id]) delete APP.grades.rows[s.id][col.id]; });
+    renderGradebook();
+    toast('تم حذف العمود', 'success');
+  });
+}
+window.deleteCol = deleteCol;
+
+async function saveGrades() {
+  const ok = await saveSection('grades');
+  toast(ok!==false ? 'تم حفظ الدرجات ✅' : 'خطأ في الحفظ', ok!==false?'success':'error');
+}
+window.saveGrades = saveGrades;
+
+function exportCSV() {
+  const A = window.APP;
+  const { columns, rows } = A.grades;
+  const header = ['الطالب', ...columns.map(c=>c.name+'/'+c.max), 'المجموع', 'المعدل%'];
+  const lines  = [header.join(',')];
+  A.students.forEach(s => {
+    const row = rows[s.id]||{};
+    const vals = columns.map(c=>row[c.id]??'');
+    const total = columns.reduce((a,c)=>a+(parseFloat(row[c.id])||0),0);
+    const maxT  = columns.reduce((a,c)=>a+(c.max||100),0);
+    const pct   = maxT ? Math.round(total/maxT*100) : '';
+    lines.push([s.name,...vals,total,pct].join(','));
+  });
+  const blob = new Blob(['﻿'+lines.join('\n')], {type:'text/csv;charset=utf-8'});
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url;
+  a.download = `درجات_${A.activeClassName}_${todayStr()}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+}
+window.exportCSV = exportCSV;
+</script>
+</body>
+</html>

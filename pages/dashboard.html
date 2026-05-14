@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1e3a5f">
+<title>لوحة التحكم — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+.nav-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:14px; margin-bottom:24px; }
+.nav-card {
+  background:var(--glass-bg); border:1px solid var(--glass-border);
+  border-radius:var(--r); padding:20px 16px;
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  cursor:pointer; transition:all 0.2s; text-align:center;
+  box-shadow:var(--shadow-sm); text-decoration:none; color:inherit;
+}
+.nav-card:hover { transform:translateY(-3px); box-shadow:var(--shadow); }
+.nav-card-icon { font-size:2rem; }
+.nav-card-label { font-size:0.85rem; font-weight:800; color:var(--ink2); }
+.nav-card-count { font-size:1.4rem; font-weight:900; color:var(--sky); }
+
+.dash-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+@media(max-width:760px){ .dash-grid { grid-template-columns:1fr; } }
+
+.recent-item {
+  display:flex; align-items:center; gap:12px;
+  padding:10px 0; border-bottom:1px solid var(--border);
+}
+.recent-item:last-child { border-bottom:none; }
+.ri-avatar {
+  width:38px; height:38px; border-radius:50%; flex-shrink:0;
+  background:linear-gradient(135deg,var(--sky),var(--plum));
+  display:flex; align-items:center; justify-content:center;
+  color:white; font-weight:900; font-size:0.9rem;
+}
+.ri-name  { font-size:0.90rem; font-weight:700; color:var(--ink2); }
+.ri-meta  { font-size:0.76rem; color:var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- Shell (topbar + sidebar + bottom nav) -->
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+
+<!-- Main content -->
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+
+<script type="module">
+import '../js/firebase.js';
+</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'dashboard';
+
+initApp({
+  sections: ['students','attendance','notes','goals','behavior','meetings'],
+  onReady: renderDash
+});
+
+function renderDash() {
+  const A = window.APP;
+  const today = todayStr();
+  const attToday = A.attendance[today] || {};
+  const totalStu = A.students.length;
+  const presentToday = Object.values(attToday).filter(v=>v==='present').length;
+  const absentToday  = Object.values(attToday).filter(v=>v==='absent').length;
+  const pendingNotes = A.notes.filter(n=>!n.done).length;
+  const openGoals    = A.goals.filter(g=>!g.done).length;
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <span class="active">لوحة التحكم</span></div>
+    <div class="ph">
+      <div>
+        <div class="ph-title">أهلاً، ${esc(A.teacher.n1 || 'معلم')} 👋</div>
+        <div class="ph-sub">${formatDate()} — ${esc(A.activeClassName)}</div>
+      </div>
+      <div class="ph-actions">
+        <a href="students.html" class="btn btn-primary">➕ إضافة طالب</a>
+        <a href="attendance.html" class="btn btn-ghost">📋 سجّل الحضور</a>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid">
+      <div class="kpi blue">
+        <span class="kpi-icon">👥</span>
+        <div class="kpi-val">${totalStu}</div>
+        <div class="kpi-label">إجمالي الطلاب</div>
+      </div>
+      <div class="kpi green">
+        <span class="kpi-icon">✅</span>
+        <div class="kpi-val">${presentToday}</div>
+        <div class="kpi-label">حاضرون اليوم</div>
+      </div>
+      <div class="kpi red">
+        <span class="kpi-icon">❌</span>
+        <div class="kpi-val">${absentToday}</div>
+        <div class="kpi-label">غائبون اليوم</div>
+      </div>
+      <div class="kpi gold">
+        <span class="kpi-icon">📝</span>
+        <div class="kpi-val">${pendingNotes}</div>
+        <div class="kpi-label">ملاحظات</div>
+      </div>
+      <div class="kpi plum">
+        <span class="kpi-icon">🎯</span>
+        <div class="kpi-val">${openGoals}</div>
+        <div class="kpi-label">أهداف مفتوحة</div>
+      </div>
+    </div>
+
+    <!-- روابط سريعة -->
+    <div class="nav-cards">
+      ${[
+        {icon:'📋',label:'الحضور',count:presentToday+'/'+totalStu,url:'attendance.html'},
+        {icon:'📒',label:'الدرجات',count:'',url:'gradebook.html'},
+        {icon:'⭐',label:'السلوك',count:'',url:'behavior.html'},
+        {icon:'📊',label:'التقارير',count:'',url:'reports.html'},
+        {icon:'📅',label:'المخطط',count:'',url:'planner.html'},
+        {icon:'🤝',label:'لقاءات الأولياء',count:'',url:'meetings.html'},
+        {icon:'🎯',label:'الأهداف',count:openGoals||'',url:'goals.html'},
+        {icon:'☁️',label:'الموارد',count:'',url:'resources.html'},
+      ].map(c=>`
+        <a class="nav-card" href="${c.url}">
+          <div class="nav-card-icon">${c.icon}</div>
+          ${c.count!==''?`<div class="nav-card-count">${c.count}</div>`:''}
+          <div class="nav-card-label">${c.label}</div>
+        </a>
+      `).join('')}
+    </div>
+
+    <!-- شبكة المعلومات -->
+    <div class="dash-grid">
+      <!-- حضور اليوم -->
+      <div class="card">
+        <div class="card-header">
+          <h3>📋 حضور اليوم</h3>
+          <a href="attendance.html" class="btn btn-ghost btn-sm">تسجيل ←</a>
+        </div>
+        <div class="card-body">
+          ${totalStu===0
+            ? `<div class="empty-state"><div class="es-icon">👥</div><div class="es-title">لا يوجد طلاب</div><div class="es-sub">أضف طلابك أولاً</div></div>`
+            : Object.keys(attToday).length===0
+              ? `<div class="empty-state" style="padding:30px 20px;"><div class="es-icon">📋</div><div class="es-title">لم يُسجَّل الحضور اليوم</div><a href="attendance.html" class="btn btn-primary btn-sm" style="margin-top:8px;">سجّل الآن</a></div>`
+              : `<div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  ${A.students.map(s=>{
+                    const st=attToday[s.id]||'';
+                    const color=st==='present'?'green':st==='absent'?'red':st==='late'?'gold':'gray';
+                    return `<span class="badge badge-${color}" title="${esc(s.name)}">${esc(s.name.split(' ')[0])}</span>`;
+                  }).join('')}
+                </div>`
+          }
+        </div>
+      </div>
+
+      <!-- آخر الملاحظات -->
+      <div class="card">
+        <div class="card-header">
+          <h3>📝 آخر الملاحظات</h3>
+          <a href="notes.html" class="btn btn-ghost btn-sm">الكل ←</a>
+        </div>
+        <div class="card-body">
+          ${A.notes.length===0
+            ? `<div class="empty-state" style="padding:30px 20px;"><div class="es-icon">📝</div><div class="es-title">لا توجد ملاحظات</div></div>`
+            : A.notes.slice(-5).reverse().map(n=>`
+                <div class="recent-item">
+                  <div class="ri-avatar">📝</div>
+                  <div>
+                    <div class="ri-name">${esc(n.text?.substring(0,60)||'')}</div>
+                    <div class="ri-meta">${formatDate(n.ts)}</div>
+                  </div>
+                </div>
+              `).join('')
+          }
+        </div>
+      </div>
+
+      <!-- رسم بياني للحضور (آخر 7 أيام) -->
+      <div class="card">
+        <div class="card-header"><h3>📈 الحضور — آخر 7 أيام</h3></div>
+        <div class="card-body">
+          <div class="chart-wrap"><canvas id="attChart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- لقاءات قادمة -->
+      <div class="card">
+        <div class="card-header">
+          <h3>🤝 لقاءات الأولياء</h3>
+          <a href="meetings.html" class="btn btn-ghost btn-sm">الكل ←</a>
+        </div>
+        <div class="card-body">
+          ${A.meetings.length===0
+            ? `<div class="empty-state" style="padding:30px 20px;"><div class="es-icon">🤝</div><div class="es-title">لا توجد لقاءات</div></div>`
+            : A.meetings.slice(-4).reverse().map(m=>`
+                <div class="recent-item">
+                  <div class="ri-avatar">🤝</div>
+                  <div>
+                    <div class="ri-name">${esc(m.parent||m.subject||'لقاء')}</div>
+                    <div class="ri-meta">${formatDate(m.date||m.ts)}</div>
+                  </div>
+                </div>
+              `).join('')
+          }
+        </div>
+      </div>
+    </div>
+  `;
+
+  // رسم بياني للحضور
+  drawAttChart();
+}
+
+function drawAttChart() {
+  const A = window.APP;
+  const days = [];
+  const presentData = [];
+  const absentData  = [];
+  for (let i=6; i>=0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const k = d.toISOString().split('T')[0];
+    const att = A.attendance[k] || {};
+    const present = Object.values(att).filter(v=>v==='present').length;
+    const absent  = Object.values(att).filter(v=>v==='absent').length;
+    days.push(d.toLocaleDateString('ar-EG',{weekday:'short'}));
+    presentData.push(present);
+    absentData.push(absent);
+  }
+  const ctx = document.getElementById('attChart');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: days,
+      datasets: [
+        { label:'حاضر', data:presentData, backgroundColor:'rgba(16,185,129,0.7)', borderRadius:6 },
+        { label:'غائب', data:absentData,  backgroundColor:'rgba(239,68,68,0.7)',  borderRadius:6 },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ font:{family:'Tajawal'} } } },
+      scales:{
+        x:{ ticks:{ font:{family:'Tajawal'} } },
+        y:{ ticks:{ font:{family:'Tajawal'}, stepSize:1 }, beginAtZero:true }
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>

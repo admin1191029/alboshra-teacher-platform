@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>السلوك — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.beh-card {
+  background:var(--glass-bg);border:1px solid var(--glass-border);
+  border-radius:var(--r);padding:16px 18px;
+  box-shadow:var(--shadow-sm); margin-bottom:14px;
+}
+.beh-header { display:flex;align-items:center;gap:12px;margin-bottom:12px; }
+.beh-entries { display:flex;flex-direction:column;gap:6px; }
+.beh-entry {
+  display:flex;align-items:center;gap:8px;
+  padding:7px 10px;border-radius:var(--r-xs);
+  font-size:0.84rem;
+}
+.beh-entry.positive { background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.20); }
+.beh-entry.negative { background:rgba(239,68,68,0.10);border:1px solid rgba(239,68,68,0.20); }
+.beh-entry.neutral  { background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.20); }
+.beh-pts { font-weight:900;min-width:28px;text-align:center; }
+.beh-pts.pos { color:var(--mint); }
+.beh-pts.neg { color:var(--ember); }
+.quick-btns { display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px; }
+.quick-btn {
+  padding:7px 14px;border-radius:99px;border:1.5px solid transparent;
+  font-family:'Tajawal',sans-serif;font-size:0.82rem;font-weight:700;
+  cursor:pointer;transition:all 0.18s;
+}
+.quick-btn.pos { border-color:var(--mint);color:#059669;background:rgba(16,185,129,0.08); }
+.quick-btn.pos:hover { background:var(--mint);color:white; }
+.quick-btn.neg { border-color:var(--ember);color:var(--ember);background:rgba(239,68,68,0.08); }
+.quick-btn.neg:hover { background:var(--ember);color:white; }
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+
+<!-- Modal: تسجيل سلوك -->
+<div class="modal-overlay" id="behModal">
+  <div class="modal-box" style="max-width:420px;">
+    <div class="modal-header">
+      <h3 id="behModalTitle">⭐ تسجيل سلوك</h3>
+      <button class="modal-close" onclick="closeModal('behModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg"><label>الطالب</label>
+        <select id="behStuSel"></select>
+      </div>
+      <div class="quick-btns" id="quickBtns"></div>
+      <div class="fg"><label>النوع</label>
+        <select id="behType">
+          <option value="positive">إيجابي ⭐</option>
+          <option value="negative">سلبي ⚠️</option>
+          <option value="neutral">محايد 📌</option>
+        </select>
+      </div>
+      <div class="fg"><label>الوصف</label>
+        <input type="text" id="behDesc" placeholder="مثال: مشاركة فعّالة، تأخر..." />
+      </div>
+      <div class="fg"><label>النقاط</label>
+        <input type="number" id="behPts" value="1" min="-10" max="10" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveBeh()">💾 حفظ</button>
+      <button class="btn btn-ghost" onclick="closeModal('behModal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'behavior';
+
+const QUICK = [
+  { label:'مشاركة',    type:'positive', pts:1 },
+  { label:'إجابة صحيحة', type:'positive', pts:1 },
+  { label:'مساعدة',    type:'positive', pts:2 },
+  { label:'إبداع',     type:'positive', pts:2 },
+  { label:'تأخر',      type:'negative', pts:-1 },
+  { label:'إزعاج',     type:'negative', pts:-1 },
+  { label:'غياب واجب', type:'negative', pts:-1 },
+];
+
+initApp({ sections:['students','behavior'], onReady: renderBehavior });
+
+function renderBehavior() {
+  const A = window.APP;
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">⭐ تقييم السلوك</span></div>
+    <div class="ph">
+      <div>
+        <div class="ph-title">⭐ تقييم السلوك</div>
+        <div class="ph-sub">${A.students.length} طالب</div>
+      </div>
+      <div class="ph-actions">
+        <button class="btn btn-primary" onclick="openBehModal()">➕ تسجيل سلوك</button>
+        <button class="btn btn-ghost" onclick="saveBehavior()">💾 حفظ</button>
+      </div>
+    </div>
+
+    <!-- ترتيب حسب النقاط -->
+    <div class="card" style="margin-bottom:18px;">
+      <div class="card-header"><h3>🏆 لوحة الشرف</h3></div>
+      <div class="card-body">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;" id="honorBoard"></div>
+      </div>
+    </div>
+
+    <!-- بطاقات الطلاب -->
+    <div id="behGrid"></div>
+  `;
+
+  renderBehGrid();
+}
+
+function getStudentPoints(stuId) {
+  const entries = APP.behavior[stuId] || [];
+  return entries.reduce((s,e)=>s+(e.pts||0), 0);
+}
+
+function renderBehGrid() {
+  const A = window.APP;
+  const sorted = [...A.students].sort((a,b)=>getStudentPoints(b.id)-getStudentPoints(a.id));
+
+  // لوحة الشرف
+  const board = document.getElementById('honorBoard');
+  if (board) {
+    const top = sorted.filter(s=>getStudentPoints(s.id)>0).slice(0,8);
+    board.innerHTML = top.length ? top.map((s,i)=>`
+      <span style="display:flex;align-items:center;gap:6px;padding:6px 12px;
+            background:${i===0?'rgba(245,158,11,0.18)':i===1?'rgba(100,116,139,0.12)':i===2?'rgba(180,100,50,0.12)':'rgba(21,101,192,0.08)'};
+            border-radius:99px;font-size:0.82rem;font-weight:800;">
+        ${i===0?'🥇':i===1?'🥈':i===2?'🥉':'⭐'} ${esc(s.name.split(' ')[0])}
+        <span style="font-weight:900;color:var(--mint);">+${getStudentPoints(s.id)}</span>
+      </span>
+    `).join('') : '<span style="color:var(--muted);font-size:0.86rem;">لا توجد نقاط بعد</span>';
+  }
+
+  const grid = document.getElementById('behGrid');
+  if (!grid) return;
+  if (!A.students.length) {
+    grid.innerHTML = `<div class="empty-state"><div class="es-icon">⭐</div><div class="es-title">لا يوجد طلاب</div></div>`;
+    return;
+  }
+
+  grid.innerHTML = sorted.map(s => {
+    const entries = (A.behavior[s.id]||[]).slice(-5).reverse();
+    const pts = getStudentPoints(s.id);
+    return `
+      <div class="beh-card">
+        <div class="beh-header">
+          <div class="stu-avatar" style="width:40px;height:40px;border-radius:50%;flex-shrink:0;
+               background:linear-gradient(135deg,var(--sky),var(--plum));
+               display:flex;align-items:center;justify-content:center;color:white;font-weight:900;">
+            ${(s.name||'?').charAt(0)}
+          </div>
+          <div style="flex:1;">
+            <div style="font-weight:800;color:var(--ink2);">${esc(s.name)}</div>
+            <div style="font-size:0.78rem;color:var(--muted);">${(A.behavior[s.id]||[]).length} سجل</div>
+          </div>
+          <span style="font-size:1.3rem;font-weight:900;color:${pts>0?'var(--mint)':pts<0?'var(--ember)':'var(--muted)'};">${pts>0?'+':''}${pts}</span>
+          <button class="btn btn-primary btn-xs" onclick="openBehModal('${s.id}')">+ سجّل</button>
+        </div>
+        <div class="beh-entries">
+          ${entries.length ? entries.map(e=>`
+            <div class="beh-entry ${e.type||'neutral'}">
+              <span class="beh-pts ${(e.pts||0)>0?'pos':'neg'}">${(e.pts||0)>0?'+':''}${e.pts||0}</span>
+              <span style="flex:1;">${esc(e.desc||'')}</span>
+              <span style="font-size:0.72rem;color:var(--muted2);">${formatDate(e.ts)}</span>
+              <button onclick="deleteBeh('${s.id}','${e.id}')" style="background:none;border:none;cursor:pointer;color:var(--ember);font-size:0.78rem;" title="حذف">✕</button>
+            </div>
+          `).join('') : `<div style="color:var(--muted2);font-size:0.80rem;text-align:center;padding:8px;">لا توجد سجلات بعد</div>`}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openBehModal(stuId) {
+  const A = window.APP;
+  const sel = document.getElementById('behStuSel');
+  sel.innerHTML = A.students.map(s=>`<option value="${s.id}" ${s.id===stuId?'selected':''}>${esc(s.name)}</option>`).join('');
+  document.getElementById('quickBtns').innerHTML = QUICK.map(q=>`
+    <button class="quick-btn ${q.type==='positive'?'pos':'neg'}" onclick="applyQuick('${q.label}','${q.type}',${q.pts})">
+      ${q.label}
+    </button>`).join('');
+  document.getElementById('behDesc').value = '';
+  document.getElementById('behPts').value  = '1';
+  document.getElementById('behType').value = 'positive';
+  openModal('behModal');
+}
+window.openBehModal = openBehModal;
+
+function applyQuick(label, type, pts) {
+  document.getElementById('behDesc').value = label;
+  document.getElementById('behType').value = type;
+  document.getElementById('behPts').value  = pts;
+}
+window.applyQuick = applyQuick;
+
+async function saveBeh() {
+  const stuId = document.getElementById('behStuSel').value;
+  const desc  = document.getElementById('behDesc').value.trim();
+  const type  = document.getElementById('behType').value;
+  const pts   = parseInt(document.getElementById('behPts').value)||0;
+  if (!stuId) { toast('اختر طالباً', 'warning'); return; }
+  if (!APP.behavior[stuId]) APP.behavior[stuId] = [];
+  APP.behavior[stuId].push({ id:genId('beh'), desc, type, pts, ts:new Date().toISOString() });
+  await saveBehavior();
+  closeModal('behModal');
+  renderBehGrid();
+  toast('تم تسجيل السلوك', 'success');
+}
+window.saveBeh = saveBeh;
+
+async function saveBehavior() {
+  const ok = await saveSection('behavior');
+  if (ok===false) toast('خطأ في الحفظ','error');
+}
+window.saveBehavior = saveBehavior;
+
+function deleteBeh(stuId, entryId) {
+  APP.behavior[stuId] = (APP.behavior[stuId]||[]).filter(e=>e.id!==entryId);
+  saveBehavior();
+  renderBehGrid();
+}
+window.deleteBeh = deleteBeh;
+</script>
+</body>
+</html>

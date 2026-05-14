@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>لقاءات الأولياء — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.meeting-card {
+  background:var(--glass-bg);border:1px solid var(--glass-border);
+  border-radius:var(--r);padding:18px 20px;
+  display:flex;align-items:flex-start;gap:14px;
+  box-shadow:var(--shadow-sm);margin-bottom:12px;
+  transition:all 0.2s;
+}
+.meeting-card:hover{transform:translateY(-1px);box-shadow:var(--shadow);}
+.meeting-icon{font-size:1.8rem;flex-shrink:0;margin-top:2px;}
+.meeting-title{font-size:0.95rem;font-weight:800;color:var(--ink2);margin-bottom:4px;}
+.meeting-meta{font-size:0.80rem;color:var(--muted);}
+.meeting-notes{font-size:0.84rem;color:var(--ink);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);line-height:1.6;}
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+
+<!-- Modal -->
+<div class="modal-overlay" id="meetModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="meetModalTitle">🤝 تسجيل لقاء</h3>
+      <button class="modal-close" onclick="closeModal('meetModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="meetId" />
+      <div class="form-grid">
+        <div class="fg">
+          <label>الطالب</label>
+          <select id="meetStu"></select>
+        </div>
+        <div class="fg">
+          <label>اسم ولي الأمر</label>
+          <input type="text" id="meetParent" placeholder="اسم ولي الأمر" />
+        </div>
+        <div class="fg">
+          <label>التاريخ</label>
+          <input type="date" id="meetDate" />
+        </div>
+        <div class="fg">
+          <label>الوقت</label>
+          <input type="time" id="meetTime" dir="ltr" />
+        </div>
+        <div class="fg" style="grid-column:1/-1;">
+          <label>موضوع اللقاء</label>
+          <input type="text" id="meetSubject" placeholder="مثال: متابعة أداء الطالب الدراسي" />
+        </div>
+        <div class="fg" style="grid-column:1/-1;">
+          <label>ملاحظات وقرارات اللقاء</label>
+          <textarea id="meetNotes" placeholder="ما تم الاتفاق عليه..." rows="4"></textarea>
+        </div>
+        <div class="fg">
+          <label>النتيجة</label>
+          <select id="meetOutcome">
+            <option value="متابعة">متابعة</option>
+            <option value="إيجابي">إيجابي</option>
+            <option value="يحتاج دعم">يحتاج دعم</option>
+            <option value="تم الحل">تم الحل</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label>لقاء قادم</label>
+          <input type="date" id="meetNext" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveMeeting()">💾 حفظ</button>
+      <button class="btn btn-ghost" onclick="closeModal('meetModal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'meetings';
+
+initApp({ sections:['students','meetings'], onReady: renderMeetings });
+
+function renderMeetings() {
+  const A = window.APP;
+  const list = [...(A.meetings||[])].reverse();
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">🤝 لقاءات الأولياء</span></div>
+    <div class="ph">
+      <div>
+        <div class="ph-title">🤝 لقاءات الأولياء</div>
+        <div class="ph-sub">${list.length} لقاء مسجّل</div>
+      </div>
+      <div class="ph-actions">
+        <button class="btn btn-primary" onclick="openMeetModal()">➕ تسجيل لقاء</button>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi blue"><span class="kpi-icon">🤝</span><div class="kpi-val">${list.length}</div><div class="kpi-label">إجمالي اللقاءات</div></div>
+      <div class="kpi green"><span class="kpi-icon">✅</span><div class="kpi-val">${list.filter(m=>m.outcome==='تم الحل'||m.outcome==='إيجابي').length}</div><div class="kpi-label">إيجابية</div></div>
+      <div class="kpi gold"><span class="kpi-icon">⏳</span><div class="kpi-val">${list.filter(m=>m.outcome==='متابعة'||m.outcome==='يحتاج دعم').length}</div><div class="kpi-label">تحتاج متابعة</div></div>
+    </div>
+
+    <!-- فلتر بحث -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-body" style="padding:10px 16px;">
+        <div class="search-box">
+          <input type="text" placeholder="ابحث باسم الطالب أو ولي الأمر..." oninput="filterMeetings(this.value)" />
+        </div>
+      </div>
+    </div>
+
+    <div id="meetingsList">
+      ${renderMeetingsList(list)}
+    </div>
+  `;
+}
+
+function renderMeetingsList(list) {
+  if (!list.length) return `
+    <div class="empty-state">
+      <div class="es-icon">🤝</div>
+      <div class="es-title">لا توجد لقاءات</div>
+      <div class="es-sub">سجّل أول لقاء مع ولي أمر</div>
+      <button class="btn btn-primary" style="margin-top:12px;" onclick="openMeetModal()">➕ تسجيل لقاء</button>
+    </div>`;
+
+  const outcomeColor = { 'إيجابي':'green','تم الحل':'green','متابعة':'gold','يحتاج دعم':'red' };
+  return list.map(m => `
+    <div class="meeting-card">
+      <div class="meeting-icon">🤝</div>
+      <div style="flex:1;min-width:0;">
+        <div class="meeting-title">${esc(m.subject||'لقاء')}</div>
+        <div class="meeting-meta">
+          👤 ${esc(m.parent||'—')} &nbsp;·&nbsp;
+          📅 ${formatDate(m.date)} ${m.time?'🕐 '+m.time:''}
+          ${m.stuName?`&nbsp;·&nbsp; 🎓 ${esc(m.stuName)}`:''}
+        </div>
+        ${m.outcome?`<span class="badge badge-${outcomeColor[m.outcome]||'blue'}" style="margin-top:6px;">${esc(m.outcome)}</span>`:''}
+        ${m.notes?`<div class="meeting-notes">${esc(m.notes)}</div>`:''}
+        ${m.nextDate?`<div style="font-size:0.78rem;color:var(--sky);margin-top:6px;">📅 لقاء قادم: ${formatDate(m.nextDate)}</div>`:''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;">
+        <button class="btn btn-ghost btn-xs" onclick="editMeeting('${m.id}')">✏️</button>
+        <button class="btn btn-danger btn-xs" onclick="deleteMeeting('${m.id}')">🗑️</button>
+      </div>
+    </div>`).join('');
+}
+
+function filterMeetings(q) {
+  const A = window.APP;
+  const lq = q.toLowerCase();
+  const list = [...(A.meetings||[])].reverse().filter(m=>
+    !q || (m.parent||'').toLowerCase().includes(lq) ||
+    (m.stuName||'').toLowerCase().includes(lq) ||
+    (m.subject||'').toLowerCase().includes(lq)
+  );
+  document.getElementById('meetingsList').innerHTML = renderMeetingsList(list);
+}
+window.filterMeetings = filterMeetings;
+
+function openMeetModal(id) {
+  const A = window.APP;
+  const m = id ? A.meetings.find(x=>x.id===id) : null;
+  document.getElementById('meetModalTitle').textContent = m ? '✏️ تعديل اللقاء' : '🤝 تسجيل لقاء';
+  document.getElementById('meetId').value      = id||'';
+  document.getElementById('meetParent').value  = m?.parent||'';
+  document.getElementById('meetDate').value    = m?.date||todayStr();
+  document.getElementById('meetTime').value    = m?.time||'';
+  document.getElementById('meetSubject').value = m?.subject||'';
+  document.getElementById('meetNotes').value   = m?.notes||'';
+  document.getElementById('meetOutcome').value = m?.outcome||'متابعة';
+  document.getElementById('meetNext').value    = m?.nextDate||'';
+  const sel = document.getElementById('meetStu');
+  sel.innerHTML = `<option value="">— اختر طالباً —</option>` +
+    A.students.map(s=>`<option value="${s.id}" ${m?.stuId===s.id?'selected':''}>${esc(s.name)}</option>`).join('');
+  openModal('meetModal');
+}
+window.openMeetModal = openMeetModal;
+
+function editMeeting(id) { openMeetModal(id); }
+window.editMeeting = editMeeting;
+
+async function saveMeeting() {
+  const A   = window.APP;
+  const id  = document.getElementById('meetId').value;
+  const stuId = document.getElementById('meetStu').value;
+  const stu   = A.students.find(s=>s.id===stuId);
+  const data  = {
+    id: id||genId('meet'),
+    stuId, stuName: stu?.name||'',
+    parent:  document.getElementById('meetParent').value.trim(),
+    date:    document.getElementById('meetDate').value,
+    time:    document.getElementById('meetTime').value,
+    subject: document.getElementById('meetSubject').value.trim(),
+    notes:   document.getElementById('meetNotes').value.trim(),
+    outcome: document.getElementById('meetOutcome').value,
+    nextDate:document.getElementById('meetNext').value,
+    ts: id ? undefined : new Date().toISOString(),
+  };
+  if (!A.meetings) A.meetings = [];
+  if (id) { const i=A.meetings.findIndex(x=>x.id===id); if(i>=0) A.meetings[i]={...A.meetings[i],...data}; }
+  else A.meetings.push(data);
+  const ok = await saveSection('meetings');
+  if (ok!==false) { toast('تم حفظ اللقاء','success'); closeModal('meetModal'); renderMeetings(); }
+  else toast('خطأ في الحفظ','error');
+}
+window.saveMeeting = saveMeeting;
+
+function deleteMeeting(id) {
+  confirm2('حذف هذا اللقاء؟', async ()=>{
+    APP.meetings = APP.meetings.filter(m=>m.id!==id);
+    await saveSection('meetings');
+    toast('تم الحذف','success'); renderMeetings();
+  });
+}
+window.deleteMeeting = deleteMeeting;
+</script>
+</body>
+</html>

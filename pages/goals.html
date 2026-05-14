@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>الأهداف — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.goal-card {
+  background:var(--glass-bg);border:1px solid var(--glass-border);
+  border-radius:var(--r);padding:18px 20px;
+  display:flex;align-items:flex-start;gap:14px;
+  box-shadow:var(--shadow-sm);margin-bottom:12px;transition:all 0.2s;
+}
+.goal-card.done { opacity:0.6; }
+.goal-card:hover{transform:translateY(-1px);box-shadow:var(--shadow);}
+.goal-check {
+  width:26px;height:26px;border-radius:50%;border:2px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;flex-shrink:0;margin-top:2px;transition:all 0.2s;font-size:0.9rem;
+}
+.goal-check.checked{background:var(--mint);border-color:var(--mint);color:white;}
+.goal-title{font-size:0.95rem;font-weight:800;color:var(--ink2);}
+.goal-title.done{text-decoration:line-through;color:var(--muted);}
+.goal-meta{font-size:0.78rem;color:var(--muted);margin-top:4px;}
+.goal-progress{margin-top:10px;}
+.prog-bar{height:6px;background:var(--surface);border-radius:99px;overflow:hidden;}
+.prog-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--sky),var(--mint));transition:width 0.4s;}
+.category-tab {
+  padding:7px 14px;border-radius:99px;border:1.5px solid var(--border);
+  background:transparent;font-family:'Tajawal',sans-serif;font-size:0.82rem;
+  font-weight:700;cursor:pointer;transition:all 0.18s;color:var(--muted);
+}
+.category-tab.active{background:var(--sky);color:white;border-color:var(--sky);}
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+
+<!-- Modal -->
+<div class="modal-overlay" id="goalModal">
+  <div class="modal-box" style="max-width:440px;">
+    <div class="modal-header">
+      <h3 id="goalModalTitle">🎯 هدف جديد</h3>
+      <button class="modal-close" onclick="closeModal('goalModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="goalId" />
+      <div class="fg"><label>عنوان الهدف *</label><input type="text" id="goalTitle" placeholder="مثال: إنهاء المنهج قبل نهاية الفصل" /></div>
+      <div class="fg"><label>التفاصيل</label><textarea id="goalDesc" rows="3" placeholder="وصف تفصيلي اختياري..."></textarea></div>
+      <div class="form-grid">
+        <div class="fg"><label>التصنيف</label>
+          <select id="goalCat">
+            <option value="تدريس">تدريس</option>
+            <option value="طلاب">طلاب</option>
+            <option value="تطوير">تطوير ذاتي</option>
+            <option value="إداري">إداري</option>
+            <option value="أخرى">أخرى</option>
+          </select>
+        </div>
+        <div class="fg"><label>الأولوية</label>
+          <select id="goalPriority">
+            <option value="عالية">🔴 عالية</option>
+            <option value="متوسطة" selected>🟡 متوسطة</option>
+            <option value="منخفضة">🟢 منخفضة</option>
+          </select>
+        </div>
+        <div class="fg"><label>تاريخ الإنجاز</label><input type="date" id="goalDeadline" /></div>
+        <div class="fg"><label>التقدم %</label><input type="number" id="goalProgress" value="0" min="0" max="100" /></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveGoal()">💾 حفظ</button>
+      <button class="btn btn-ghost" onclick="closeModal('goalModal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'goals';
+let _activeCat = 'الكل';
+
+initApp({ sections:['goals'], onReady: renderGoals });
+
+function renderGoals() {
+  const A = window.APP;
+  const goals = A.goals||[];
+  const done  = goals.filter(g=>g.done).length;
+  const nbEl  = document.getElementById('nb-goals');
+  if (nbEl) { nbEl.textContent = goals.length-done; nbEl.style.display = (goals.length-done)?'':'none'; }
+
+  const cats = ['الكل','تدريس','طلاب','تطوير','إداري','أخرى'];
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">🎯 الأهداف</span></div>
+    <div class="ph">
+      <div><div class="ph-title">🎯 الأهداف والخطط</div><div class="ph-sub">${goals.length} هدف · ${done} منجز</div></div>
+      <div class="ph-actions">
+        <button class="btn btn-primary" onclick="openGoalModal()">➕ هدف جديد</button>
+        <button class="btn btn-ghost" onclick="saveGoals()">💾 حفظ</button>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi blue"><span class="kpi-icon">🎯</span><div class="kpi-val">${goals.length}</div><div class="kpi-label">إجمالي الأهداف</div></div>
+      <div class="kpi green"><span class="kpi-icon">✅</span><div class="kpi-val">${done}</div><div class="kpi-label">منجزة</div></div>
+      <div class="kpi gold"><span class="kpi-icon">⏳</span><div class="kpi-val">${goals.length-done}</div><div class="kpi-label">جارية</div></div>
+      <div class="kpi plum"><span class="kpi-icon">📊</span>
+        <div class="kpi-val">${goals.length?Math.round(done/goals.length*100):0}%</div>
+        <div class="kpi-label">نسبة الإنجاز</div>
+      </div>
+    </div>
+
+    <!-- فلاتر -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+      ${cats.map(c=>`<button class="category-tab${c===_activeCat?' active':''}" onclick="setCat('${c}')">${c}</button>`).join('')}
+    </div>
+
+    <div id="goalsList">${renderGoalsList(goals)}</div>
+  `;
+}
+
+function renderGoalsList(goals) {
+  const filtered = _activeCat==='الكل' ? goals : goals.filter(g=>g.cat===_activeCat);
+  const sorted   = [...filtered].sort((a,b)=>{
+    if (a.done!==b.done) return a.done?1:-1;
+    const pri = {'عالية':0,'متوسطة':1,'منخفضة':2};
+    return (pri[a.priority]||1)-(pri[b.priority]||1);
+  });
+
+  if (!sorted.length) return `<div class="empty-state"><div class="es-icon">🎯</div><div class="es-title">لا توجد أهداف</div><div class="es-sub">أضف هدفك الأول الآن</div><button class="btn btn-primary" style="margin-top:12px;" onclick="openGoalModal()">➕ هدف جديد</button></div>`;
+
+  const priColor = {'عالية':'red','متوسطة':'gold','منخفضة':'green'};
+  return sorted.map(g=>{
+    const overdue = !g.done && g.deadline && new Date(g.deadline)<new Date();
+    const prog = Math.min(100,parseInt(g.progress)||0);
+    return `
+      <div class="goal-card${g.done?' done':''}">
+        <div class="goal-check ${g.done?'checked':''}" onclick="toggleGoal('${g.id}')">${g.done?'✓':''}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div class="goal-title${g.done?' done':''}">${esc(g.title)}</div>
+            ${g.priority?`<span class="badge badge-${priColor[g.priority]||'blue'}">${g.priority}</span>`:''}
+            ${g.cat?`<span class="badge badge-gray">${esc(g.cat)}</span>`:''}
+          </div>
+          ${g.desc?`<div style="font-size:0.82rem;color:var(--muted);margin-top:4px;line-height:1.5;">${esc(g.desc)}</div>`:''}
+          <div class="goal-meta">
+            ${g.deadline?`📅 ${formatDate(g.deadline)} ${overdue?'<span style="color:var(--ember);">⚠️ متأخر</span>':''}`:''}
+          </div>
+          ${prog>0?`
+            <div class="goal-progress">
+              <div style="display:flex;justify-content:space-between;font-size:0.74rem;color:var(--muted);margin-bottom:4px;">
+                <span>التقدم</span><span>${prog}%</span>
+              </div>
+              <div class="prog-bar"><div class="prog-fill" style="width:${prog}%;"></div></div>
+            </div>`:''}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;">
+          <button class="btn btn-ghost btn-xs" onclick="editGoal('${g.id}')">✏️</button>
+          <button class="btn btn-danger btn-xs" onclick="deleteGoal('${g.id}')">🗑️</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function setCat(cat) { _activeCat=cat; renderGoals(); }
+window.setCat = setCat;
+
+function toggleGoal(id) {
+  const g = APP.goals.find(x=>x.id===id);
+  if (g) { g.done=!g.done; if(g.done) g.progress=100; renderGoals(); }
+}
+window.toggleGoal = toggleGoal;
+
+function openGoalModal(id) {
+  const g = id ? APP.goals.find(x=>x.id===id) : null;
+  document.getElementById('goalModalTitle').textContent = g?'✏️ تعديل الهدف':'🎯 هدف جديد';
+  document.getElementById('goalId').value       = id||'';
+  document.getElementById('goalTitle').value    = g?.title||'';
+  document.getElementById('goalDesc').value     = g?.desc||'';
+  document.getElementById('goalCat').value      = g?.cat||'تدريس';
+  document.getElementById('goalPriority').value = g?.priority||'متوسطة';
+  document.getElementById('goalDeadline').value = g?.deadline||'';
+  document.getElementById('goalProgress').value = g?.progress||0;
+  openModal('goalModal');
+}
+window.openGoalModal = openGoalModal;
+
+function editGoal(id) { openGoalModal(id); }
+window.editGoal = editGoal;
+
+async function saveGoal() {
+  const id = document.getElementById('goalId').value;
+  const title = document.getElementById('goalTitle').value.trim();
+  if (!title) { toast('أدخل عنوان الهدف','warning'); return; }
+  const data = {
+    id: id||genId('goal'), title,
+    desc:     document.getElementById('goalDesc').value.trim(),
+    cat:      document.getElementById('goalCat').value,
+    priority: document.getElementById('goalPriority').value,
+    deadline: document.getElementById('goalDeadline').value,
+    progress: parseInt(document.getElementById('goalProgress').value)||0,
+    done: id ? APP.goals.find(g=>g.id===id)?.done||false : false,
+    ts: id?undefined:new Date().toISOString(),
+  };
+  if (!APP.goals) APP.goals=[];
+  if (id) { const i=APP.goals.findIndex(g=>g.id===id); if(i>=0) APP.goals[i]={...APP.goals[i],...data}; }
+  else APP.goals.push(data);
+  await saveGoals();
+  closeModal('goalModal'); renderGoals();
+}
+window.saveGoal = saveGoal;
+
+async function saveGoals() {
+  const ok = await saveSection('goals');
+  toast(ok!==false?'تم الحفظ ✅':'خطأ في الحفظ', ok!==false?'success':'error');
+}
+window.saveGoals = saveGoals;
+
+function deleteGoal(id) {
+  confirm2('حذف هذا الهدف؟', async ()=>{
+    APP.goals = APP.goals.filter(g=>g.id!==id);
+    await saveSection('goals');
+    toast('تم الحذف','success'); renderGoals();
+  });
+}
+window.deleteGoal = deleteGoal;
+</script>
+</body>
+</html>

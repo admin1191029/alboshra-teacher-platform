@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>الملاحظات — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.notes-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }
+.note-card {
+  background:var(--glass-bg); border:1px solid var(--glass-border);
+  border-radius:var(--r); padding:18px;
+  box-shadow:var(--shadow-sm); transition:all 0.2s;
+  display:flex; flex-direction:column; gap:10px;
+  border-top:4px solid var(--sky);
+}
+.note-card:hover { transform:translateY(-2px); box-shadow:var(--shadow); }
+.note-text { font-size:0.90rem; color:var(--ink); line-height:1.65; flex:1; white-space:pre-wrap; word-break:break-word; }
+.note-footer { display:flex; align-items:center; justify-content:space-between; }
+.note-meta  { font-size:0.75rem; color:var(--muted2); }
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+
+<!-- Modal -->
+<div class="modal-overlay" id="noteModal">
+  <div class="modal-box" style="max-width:460px;">
+    <div class="modal-header">
+      <h3 id="noteModalTitle">📝 ملاحظة جديدة</h3>
+      <button class="modal-close" onclick="closeModal('noteModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="noteId" />
+      <div class="fg">
+        <label>الطالب (اختياري)</label>
+        <select id="noteStu"><option value="">— عامة —</option></select>
+      </div>
+      <div class="fg">
+        <label>نص الملاحظة</label>
+        <textarea id="noteText" rows="5" placeholder="اكتب ملاحظتك هنا..."></textarea>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <label style="font-size:0.84rem;font-weight:700;color:var(--ink2);">اللون:</label>
+        ${['#1565c0','#10b981','#f59e0b','#ef4444','#7c3aed','#f43f5e','#0d9488'].map((c,i)=>`
+          <div onclick="document.getElementById('noteColor').value='${c}';document.querySelectorAll('.npick').forEach(x=>x.style.outline='none');this.style.outline='3px solid var(--ink2)';"
+            class="npick" style="width:24px;height:24px;border-radius:50%;background:${c};cursor:pointer;${i===0?'outline:3px solid var(--ink2)':''}"></div>`).join('')}
+        <input type="hidden" id="noteColor" value="#1565c0" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveNote()">💾 حفظ</button>
+      <button class="btn btn-ghost" onclick="closeModal('noteModal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'notes';
+
+initApp({ sections:['students','notes'], onReady: renderNotes });
+
+function renderNotes() {
+  const A = window.APP;
+  const nbEl = document.getElementById('nb-notes');
+  if (nbEl) { nbEl.textContent = A.notes.length; nbEl.style.display = A.notes.length?'':'none'; }
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">📝 الملاحظات</span></div>
+    <div class="ph">
+      <div><div class="ph-title">📝 الملاحظات</div><div class="ph-sub">${A.notes.length} ملاحظة</div></div>
+      <div class="ph-actions">
+        <button class="btn btn-primary" onclick="openNoteModal()">➕ ملاحظة جديدة</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-body" style="padding:10px 16px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <div class="search-box" style="flex:1;min-width:180px;">
+            <input type="text" placeholder="ابحث في الملاحظات..." oninput="filterNotes(this.value)" />
+          </div>
+          <select id="notesStuFilter" onchange="filterNotes()" style="padding:9px 12px;border-radius:var(--r-sm);border:1.5px solid var(--border);font-family:'Tajawal',sans-serif;font-size:0.86rem;">
+            <option value="">كل الطلاب</option>
+            ${A.students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    </div>
+    <div id="notesGrid">${renderNotesGrid([...A.notes].reverse())}</div>
+  `;
+}
+
+function renderNotesGrid(list) {
+  if (!list.length) return `
+    <div class="empty-state">
+      <div class="es-icon">📝</div>
+      <div class="es-title">لا توجد ملاحظات</div>
+      <div class="es-sub">أضف ملاحظاتك عن طلابك أو دروسك</div>
+      <button class="btn btn-primary" style="margin-top:12px;" onclick="openNoteModal()">➕ ملاحظة جديدة</button>
+    </div>`;
+  return `<div class="notes-grid">${list.map(n=>`
+    <div class="note-card" style="border-top-color:${n.color||'var(--sky)'};">
+      ${n.stuName?`<span class="badge badge-blue">🎓 ${esc(n.stuName)}</span>`:''}
+      <div class="note-text">${esc(n.text||'')}</div>
+      <div class="note-footer">
+        <span class="note-meta">${formatDate(n.ts)}</span>
+        <div style="display:flex;gap:5px;">
+          <button class="btn btn-ghost btn-xs" onclick="editNote('${n.id}')">✏️</button>
+          <button class="btn btn-danger btn-xs" onclick="deleteNote('${n.id}')">🗑️</button>
+        </div>
+      </div>
+    </div>`).join('')}</div>`;
+}
+
+function filterNotes(q) {
+  const A = window.APP;
+  const query  = (q ?? document.querySelector('[oninput]')?.value ?? '').toLowerCase();
+  const stuId  = document.getElementById('notesStuFilter')?.value || '';
+  const list   = [...A.notes].reverse().filter(n =>
+    (!query || (n.text||'').toLowerCase().includes(query)) &&
+    (!stuId || n.stuId===stuId)
+  );
+  document.getElementById('notesGrid').innerHTML = renderNotesGrid(list);
+}
+window.filterNotes = filterNotes;
+
+function openNoteModal(id) {
+  const A = window.APP;
+  const n = id ? A.notes.find(x=>x.id===id) : null;
+  document.getElementById('noteModalTitle').textContent = n ? '✏️ تعديل ملاحظة' : '📝 ملاحظة جديدة';
+  document.getElementById('noteId').value   = id||'';
+  document.getElementById('noteText').value = n?.text||'';
+  document.getElementById('noteColor').value= n?.color||'#1565c0';
+  const sel = document.getElementById('noteStu');
+  sel.innerHTML = `<option value="">— عامة —</option>`+A.students.map(s=>`<option value="${s.id}" ${n?.stuId===s.id?'selected':''}>${esc(s.name)}</option>`).join('');
+  document.querySelectorAll('.npick').forEach(x=>{ x.style.outline = x.style.background===(n?.color||'#1565c0')?'3px solid var(--ink2)':'none'; });
+  openModal('noteModal');
+}
+window.openNoteModal = openNoteModal;
+
+function editNote(id) { openNoteModal(id); }
+window.editNote = editNote;
+
+async function saveNote() {
+  const A    = window.APP;
+  const id   = document.getElementById('noteId').value;
+  const text = document.getElementById('noteText').value.trim();
+  if (!text) { toast('أدخل نص الملاحظة','warning'); return; }
+  const stuId  = document.getElementById('noteStu').value;
+  const stuName= A.students.find(s=>s.id===stuId)?.name||'';
+  const data   = { id:id||genId('note'), text, stuId, stuName, color:document.getElementById('noteColor').value, ts:id?undefined:new Date().toISOString() };
+  if (id) { const i=A.notes.findIndex(x=>x.id===id); if(i>=0) A.notes[i]={...A.notes[i],...data}; }
+  else A.notes.push(data);
+  const ok = await saveSection('notes');
+  if (ok!==false) { toast('تم الحفظ','success'); closeModal('noteModal'); renderNotes(); }
+  else toast('خطأ في الحفظ','error');
+}
+window.saveNote = saveNote;
+
+function deleteNote(id) {
+  confirm2('حذف هذه الملاحظة؟', async ()=>{
+    APP.notes = APP.notes.filter(n=>n.id!==id);
+    await saveSection('notes');
+    toast('تم الحذف','success'); renderNotes();
+  });
+}
+window.deleteNote = deleteNote;
+</script>
+</body>
+</html>

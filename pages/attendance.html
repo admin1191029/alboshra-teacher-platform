@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>الحضور — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.att-row {
+  display:flex; align-items:center; gap:12px;
+  padding:11px 16px; border-bottom:1px solid var(--border);
+  transition:background 0.15s;
+}
+.att-row:hover { background:rgba(21,101,192,0.04); }
+.att-row:last-child { border-bottom:none; }
+.att-btns { margin-right:auto; display:flex; gap:6px; }
+.att-note-input {
+  width:140px; padding:5px 8px; font-size:0.78rem;
+  border:1px solid var(--border); border-radius:var(--r-xs);
+  background:rgba(255,255,255,0.55); font-family:'Tajawal',sans-serif;
+  color:var(--ink); outline:none;
+}
+.att-note-input:focus { border-color:var(--sky3); }
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'attendance';
+let _saving = false;
+
+initApp({ sections:['students','attendance'], onReady: renderAttendance });
+
+function renderAttendance() {
+  const A = window.APP;
+  const today = todayStr();
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">📋 الحضور</span></div>
+    <div class="ph">
+      <div>
+        <div class="ph-title">📋 الحضور اليومي</div>
+        <div class="ph-sub">${esc(A.activeClassName)}</div>
+      </div>
+      <div class="ph-actions">
+        <input type="date" id="attDate" value="${today}"
+          style="padding:9px 12px;border-radius:var(--r-sm);border:1.5px solid var(--border);
+                 font-family:'Tajawal',sans-serif;font-size:0.88rem;background:rgba(255,255,255,0.55);"
+          onchange="loadDate(this.value)" />
+        <button class="btn btn-primary" onclick="markAll('present')">✅ كل حاضر</button>
+        <button class="btn btn-ghost" onclick="markAll('absent')">❌ كل غائب</button>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid" id="attKpi"></div>
+
+    <!-- جدول الحضور -->
+    <div class="card">
+      <div class="card-header">
+        <h3 id="attDateLabel">—</h3>
+        <button class="btn btn-primary btn-sm" onclick="saveAttendance()">💾 حفظ</button>
+      </div>
+      <div id="attList">
+        ${A.students.length===0
+          ? `<div class="empty-state"><div class="es-icon">👥</div><div class="es-title">لا يوجد طلاب</div><div class="es-sub"><a href="students.html" class="btn btn-primary btn-sm" style="margin-top:8px;">إضافة طلاب</a></div></div>`
+          : ''}
+      </div>
+    </div>
+  `;
+
+  loadDate(today);
+}
+
+function loadDate(dateStr) {
+  const A = window.APP;
+  const att = A.attendance[dateStr] || {};
+
+  // تحديث التسمية
+  const lbl = document.getElementById('attDateLabel');
+  if (lbl) lbl.textContent = '📋 ' + formatDate(dateStr);
+
+  // حساب إحصاءات
+  const present = Object.values(att).filter(v=>v==='present').length;
+  const absent  = Object.values(att).filter(v=>v==='absent').length;
+  const late    = Object.values(att).filter(v=>v==='late').length;
+  const kpiEl = document.getElementById('attKpi');
+  if (kpiEl) kpiEl.innerHTML = `
+    <div class="kpi green"><span class="kpi-icon">✅</span><div class="kpi-val">${present}</div><div class="kpi-label">حاضر</div></div>
+    <div class="kpi red"><span class="kpi-icon">❌</span><div class="kpi-val">${absent}</div><div class="kpi-label">غائب</div></div>
+    <div class="kpi gold"><span class="kpi-icon">⏰</span><div class="kpi-val">${late}</div><div class="kpi-label">متأخر</div></div>
+    <div class="kpi blue"><span class="kpi-icon">👥</span><div class="kpi-val">${A.students.length}</div><div class="kpi-label">الكل</div></div>
+  `;
+
+  // قائمة الطلاب
+  const listEl = document.getElementById('attList');
+  if (!listEl || !A.students.length) return;
+  listEl.innerHTML = A.students.map(s => {
+    const status = att[s.id] || '';
+    const noteKey = `note_${s.id}`;
+    const note = (A.attendance[`${dateStr}_notes`]||{})[s.id] || '';
+    return `
+      <div class="att-row" id="att-row-${s.id}">
+        <div class="stu-avatar" style="width:38px;height:38px;border-radius:50%;flex-shrink:0;
+             background:linear-gradient(135deg,var(--sky),var(--plum));
+             display:flex;align-items:center;justify-content:center;color:white;font-weight:900;font-size:0.85rem;">
+          ${(s.name||'؟').charAt(0)}
+        </div>
+        <div style="min-width:0;flex:1;">
+          <div style="font-weight:700;font-size:0.90rem;color:var(--ink2);">${esc(s.name)}</div>
+          ${s.num?`<div style="font-size:0.74rem;color:var(--muted);">#${s.num}</div>`:''}
+        </div>
+        <input class="att-note-input" id="${noteKey}" value="${esc(note)}" placeholder="ملاحظة..." />
+        <div class="att-btns">
+          <button class="att-btn present${status==='present'?' active':''}" onclick="setAtt('${s.id}','present','${dateStr}')">حاضر</button>
+          <button class="att-btn absent${status==='absent'?' active':''}"  onclick="setAtt('${s.id}','absent','${dateStr}')">غائب</button>
+          <button class="att-btn late${status==='late'?' active':''}"     onclick="setAtt('${s.id}','late','${dateStr}')">متأخر</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+window.loadDate = loadDate;
+
+function setAtt(stuId, status, dateStr) {
+  const A = window.APP;
+  if (!A.attendance[dateStr]) A.attendance[dateStr] = {};
+  A.attendance[dateStr][stuId] = status;
+  // تحديث الأزرار
+  const row = document.getElementById(`att-row-${stuId}`);
+  if (row) {
+    row.querySelectorAll('.att-btn').forEach(b => {
+      const t = b.classList.contains('present')?'present':b.classList.contains('absent')?'absent':'late';
+      b.classList.toggle('active', t===status);
+    });
+  }
+  updateKpi(dateStr);
+}
+window.setAtt = setAtt;
+
+function updateKpi(dateStr) {
+  const A   = window.APP;
+  const att = A.attendance[dateStr]||{};
+  const present = Object.values(att).filter(v=>v==='present').length;
+  const absent  = Object.values(att).filter(v=>v==='absent').length;
+  const late    = Object.values(att).filter(v=>v==='late').length;
+  const kpiEl = document.getElementById('attKpi');
+  if (!kpiEl) return;
+  kpiEl.querySelectorAll('.kpi-val').forEach((el,i)=>{
+    if(i===0) el.textContent=present;
+    else if(i===1) el.textContent=absent;
+    else if(i===2) el.textContent=late;
+  });
+}
+
+function markAll(status) {
+  const A = window.APP;
+  const dateStr = document.getElementById('attDate')?.value || todayStr();
+  if (!A.attendance[dateStr]) A.attendance[dateStr] = {};
+  A.students.forEach(s => { A.attendance[dateStr][s.id] = status; });
+  loadDate(dateStr);
+  toast(`تم تحديد الكل: ${status==='present'?'حاضر':status==='absent'?'غائب':'متأخر'}`, 'success');
+}
+window.markAll = markAll;
+
+async function saveAttendance() {
+  if (_saving) return;
+  _saving = true;
+  const A = window.APP;
+  const dateStr = document.getElementById('attDate')?.value || todayStr();
+  // حفظ الملاحظات
+  const notes = {};
+  A.students.forEach(s => {
+    const v = document.getElementById(`note_${s.id}`)?.value?.trim();
+    if (v) notes[s.id] = v;
+  });
+  if (Object.keys(notes).length) A.attendance[`${dateStr}_notes`] = notes;
+  const ok = await saveSection('attendance');
+  _saving = false;
+  toast(ok !== false ? 'تم حفظ الحضور ✅' : 'خطأ في الحفظ', ok !== false ? 'success' : 'error');
+}
+window.saveAttendance = saveAttendance;
+</script>
+</body>
+</html>

@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>الملف الشخصي — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.profile-hero {
+  background: linear-gradient(135deg, rgba(21,101,192,0.15), rgba(124,58,237,0.10));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r);
+  padding: 32px 28px;
+  display: flex; align-items: center; gap: 24px;
+  margin-bottom: 24px;
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-sm);
+}
+.profile-avatar-wrap { position:relative; flex-shrink:0; }
+.profile-avatar {
+  width: 90px; height: 90px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--sky), var(--plum));
+  display: flex; align-items: center; justify-content: center;
+  color: white; font-size: 2.2rem; font-weight: 900;
+  overflow: hidden; border: 3px solid rgba(255,255,255,0.6);
+  box-shadow: 0 6px 20px rgba(21,101,192,0.25);
+  cursor: pointer;
+}
+.profile-avatar:hover::after {
+  content: '📷';
+  position: absolute; inset: 0; border-radius: 50%;
+  background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.6rem;
+}
+.profile-name { font-size: 1.4rem; font-weight: 900; color: var(--ink2); margin-bottom: 4px; }
+.profile-email { font-size: 0.86rem; color: var(--muted); margin-bottom: 10px; }
+
+.theme-swatch {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 3px solid transparent; cursor: pointer; transition: all 0.18s;
+}
+.theme-swatch.active { border-color: white; transform: scale(1.2); box-shadow: 0 0 0 2px var(--sky); }
+.theme-swatch:hover  { transform: scale(1.15); }
+
+.danger-zone {
+  background: rgba(239,68,68,0.06);
+  border: 1.5px solid rgba(239,68,68,0.20);
+  border-radius: var(--r);
+  padding: 20px 24px;
+  margin-top: 8px;
+}
+.danger-zone h3 { color: var(--ember); font-size: 0.95rem; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'profile';
+
+initApp({ sections:[], onReady: renderProfile });
+
+function renderProfile() {
+  const A = window.APP;
+  const u = A.user;
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">⚙️ الملف الشخصي</span></div>
+    <div class="ph">
+      <div><div class="ph-title">⚙️ الملف الشخصي والإعدادات</div></div>
+    </div>
+
+    <!-- بطاقة المعلم -->
+    <div class="profile-hero">
+      <div class="profile-avatar-wrap">
+        <div class="profile-avatar" id="profileAvatar" onclick="changePhoto()" title="تغيير الصورة">
+          ${A.teacher.photo
+            ? `<img src="${esc(A.teacher.photo)}" style="width:100%;height:100%;object-fit:cover;" />`
+            : (A.teacher.n1||'م').charAt(0)}
+        </div>
+      </div>
+      <div style="flex:1;">
+        <div class="profile-name" id="profileName">${esc(fullName()) || 'المعلم'}</div>
+        <div class="profile-email">${esc(u?.email||'')}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <span class="badge badge-blue">🏫 ${esc(A.activeClassName||'—')}</span>
+          <span class="badge badge-green">✅ ${A.classes.length} فصل</span>
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="logOut()">🚪 تسجيل الخروج</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+
+      <!-- بيانات المعلم -->
+      <div class="card">
+        <div class="card-header"><h3>👤 البيانات الشخصية</h3></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="fg"><label>الاسم الأول</label><input type="text" id="pn1" value="${esc(A.teacher.n1)}" placeholder="الاسم الأول" /></div>
+            <div class="fg"><label>اسم الأب</label><input type="text" id="pn2" value="${esc(A.teacher.n2)}" placeholder="اسم الأب" /></div>
+            <div class="fg" style="grid-column:1/-1;"><label>اللقب / اسم العائلة</label><input type="text" id="pn3" value="${esc(A.teacher.n3)}" placeholder="اللقب" /></div>
+          </div>
+          <button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="saveProfile()">💾 حفظ البيانات</button>
+        </div>
+      </div>
+
+      <!-- إدارة الفصول -->
+      <div class="card">
+        <div class="card-header">
+          <h3>🏫 الفصول الدراسية</h3>
+          <button class="btn btn-primary btn-sm" onclick="openClassManager()">➕ فصل</button>
+        </div>
+        <div class="card-body">
+          <div id="profileClassList">
+            ${A.classes.map(c=>`
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;
+                   background:${c.id===A.activeClassId?'rgba(21,101,192,0.10)':'var(--surface)'};
+                   border:1.5px solid ${c.id===A.activeClassId?'var(--sky)':'var(--border)'};
+                   border-radius:var(--r-sm);margin-bottom:8px;cursor:pointer;"
+                   onclick="switchClass('${c.id}')">
+                <span>🏫</span>
+                <div style="flex:1;">
+                  <div style="font-weight:800;font-size:0.88rem;color:${c.id===A.activeClassId?'var(--sky)':'var(--ink2)'};">${esc(c.name)}</div>
+                </div>
+                ${c.id===A.activeClassId?'<span style="color:var(--sky);">✓ نشط</span>':''}
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- المظهر -->
+      <div class="card">
+        <div class="card-header"><h3>🎨 المظهر</h3></div>
+        <div class="card-body">
+          <div class="fg">
+            <label>الوضع</label>
+            <div style="display:flex;gap:10px;margin-top:6px;">
+              <button class="btn btn-ghost btn-sm" id="themeLight" onclick="setTheme('light')">☀️ فاتح</button>
+              <button class="btn btn-ghost btn-sm" id="themeDark"  onclick="setTheme('dark')">🌙 داكن</button>
+            </div>
+          </div>
+          <div class="fg">
+            <label>لون الواجهة</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+              ${[
+                {id:'blue',  color:'#1565c0', label:'أزرق'},
+                {id:'purple',color:'#7c3aed', label:'بنفسجي'},
+                {id:'green', color:'#059669', label:'أخضر'},
+                {id:'rose',  color:'#e11d48', label:'وردي'},
+                {id:'teal',  color:'#0d9488', label:'فيروزي'},
+              ].map(t=>`
+                <div onclick="setAccent('${t.id}','${t.color}')"
+                  class="theme-swatch ${getActiveAccent()===t.id?'active':''}"
+                  style="background:${t.color};" title="${t.label}"></div>`).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- إحصاءات سريعة -->
+      <div class="card">
+        <div class="card-header"><h3>📊 إحصاءات الحساب</h3></div>
+        <div class="card-body">
+          <div id="profileStats">
+            <div class="loading-wrap" style="padding:20px;"><div class="spinner"></div></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- منطقة الخطر -->
+    <div class="danger-zone" style="margin-top:18px;">
+      <h3>⚠️ منطقة الخطر</h3>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <button class="btn btn-danger btn-sm" onclick="exportAllData()">📤 تصدير كل البيانات</button>
+        <button class="btn btn-danger btn-sm" onclick="confirmDeleteClass()">🗑️ حذف الفصل الحالي</button>
+        <button class="btn btn-danger btn-sm" onclick="logOut()">🚪 تسجيل الخروج</button>
+      </div>
+    </div>
+  `;
+
+  loadProfileStats();
+  applyThemeUI();
+}
+
+async function loadProfileStats() {
+  const A = window.APP;
+  const sections = ['students','attendance','notes','goals','meetings','behavior'];
+  await loadClassData(sections);
+  const attDays = Object.keys(A.attendance).filter(k=>!k.includes('_notes')).length;
+  document.getElementById('profileStats').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      ${[
+        ['👥', 'الطلاب',      A.students.length],
+        ['📅', 'أيام الحضور', attDays],
+        ['📝', 'الملاحظات',   A.notes.length],
+        ['🎯', 'الأهداف',     A.goals.length],
+        ['🤝', 'اللقاءات',    A.meetings.length],
+        ['⭐', 'سجلات السلوك',Object.values(A.behavior).flat().length],
+      ].map(([icon,label,val])=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);">
+          <span style="font-size:0.86rem;color:var(--ink2);">${icon} ${label}</span>
+          <span style="font-weight:900;color:var(--sky);">${val}</span>
+        </div>`).join('')}
+    </div>`;
+}
+
+async function saveProfile() {
+  const A = window.APP;
+  A.teacher.n1 = document.getElementById('pn1').value.trim();
+  A.teacher.n2 = document.getElementById('pn2').value.trim();
+  A.teacher.n3 = document.getElementById('pn3').value.trim();
+  const ok = await DB.saveProfile(A.uid, { ...A.teacher, email: A.user?.email||'' });
+  if (ok!==false) {
+    toast('تم حفظ البيانات ✅','success');
+    document.getElementById('profileName').textContent = fullName() || 'المعلم';
+    updateTopbar();
+  } else toast('خطأ في الحفظ','error');
+}
+window.saveProfile = saveProfile;
+
+function changePhoto() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2*1024*1024) { toast('الصورة أكبر من 2MB، اختر صورة أصغر','warning'); return; }
+    const reader = new FileReader();
+    reader.onload = async ev => {
+      APP.teacher.photo = ev.target.result;
+      const avatarEl = document.getElementById('profileAvatar');
+      if (avatarEl) avatarEl.innerHTML = `<img src="${APP.teacher.photo}" style="width:100%;height:100%;object-fit:cover;" />`;
+      await DB.saveProfile(APP.uid, { ...APP.teacher, email: APP.user?.email||'' });
+      updateTopbar();
+      toast('تم تحديث الصورة','success');
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+window.changePhoto = changePhoto;
+
+function getActiveAccent() {
+  return localStorage.getItem('bs_accent')||'blue';
+}
+
+function setAccent(id, color) {
+  localStorage.setItem('bs_accent', id);
+  document.documentElement.style.setProperty('--sky', color);
+  document.documentElement.style.setProperty('--accent', color);
+  document.querySelectorAll('.theme-swatch').forEach((el,i)=>{
+    el.classList.toggle('active', el.title === {blue:'أزرق',purple:'بنفسجي',green:'أخضر',rose:'وردي',teal:'فيروزي'}[id]);
+  });
+  toast('تم تغيير اللون','success');
+}
+window.setAccent = setAccent;
+
+function setTheme(mode) {
+  document.body.classList.toggle('dark', mode==='dark');
+  localStorage.setItem('bs_theme', mode);
+  applyThemeUI();
+  toast(mode==='dark'?'الوضع الداكن 🌙':'الوضع الفاتح ☀️','success');
+}
+window.setTheme = setTheme;
+
+function applyThemeUI() {
+  const isDark = localStorage.getItem('bs_theme')==='dark';
+  document.body.classList.toggle('dark', isDark);
+  const accent = localStorage.getItem('bs_accent');
+  const colors = {blue:'#1565c0',purple:'#7c3aed',green:'#059669',rose:'#e11d48',teal:'#0d9488'};
+  if (accent && colors[accent]) {
+    document.documentElement.style.setProperty('--sky', colors[accent]);
+    document.documentElement.style.setProperty('--accent', colors[accent]);
+  }
+}
+
+async function logOut() {
+  confirm2('تسجيل الخروج من الحساب؟', async ()=>{
+    await DB.signOutUser();
+    window.location.href = '../index.html';
+  });
+}
+window.logOut = logOut;
+
+async function exportAllData() {
+  const A = window.APP;
+  await loadClassData(['students','attendance','grades','behavior','notes','goals','meetings','planner','resources']);
+  const data = {
+    teacher: A.teacher, className: A.activeClassName,
+    students:A.students, attendance:A.attendance, grades:A.grades,
+    behavior:A.behavior, notes:A.notes, goals:A.goals,
+    meetings:A.meetings, planner:A.planner, resources:A.resources,
+    exportedAt: new Date().toISOString()
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url;
+  a.download = `البشرى_backup_${todayStr()}.json`;
+  a.click(); URL.revokeObjectURL(url);
+  toast('تم تصدير البيانات','success');
+}
+window.exportAllData = exportAllData;
+
+function confirmDeleteClass() {
+  const A = window.APP;
+  if (A.classes.length<=1) { toast('لا يمكن حذف الفصل الوحيد','warning'); return; }
+  confirm2(`حذف الفصل "${A.activeClassName}" وكل بياناته؟ لا يمكن التراجع!`, async ()=>{
+    await DB.deleteClass(A.uid, A.activeClassId);
+    A.classes = A.classes.filter(c=>c.id!==A.activeClassId);
+    await switchClass(A.classes[0].id);
+  });
+}
+window.confirmDeleteClass = confirmDeleteClass;
+
+// تطبيق الثيم عند التحميل
+applyThemeUI();
+</script>
+</body>
+</html>

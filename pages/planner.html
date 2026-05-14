@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>المخطط الأسبوعي — مدارس البشرى</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/main.css">
+<style>
+.week-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
+@media(max-width:760px){ .week-grid{grid-template-columns:1fr 1fr;} }
+@media(max-width:480px){ .week-grid{grid-template-columns:1fr;} }
+.day-col { background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow-sm); }
+.day-header { padding:12px 14px;font-weight:800;font-size:0.90rem;color:white;display:flex;align-items:center;justify-content:space-between; }
+.day-body { padding:10px; min-height:160px; }
+.plan-item {
+  background:rgba(255,255,255,0.55);border:1px solid var(--border);
+  border-radius:var(--r-xs);padding:8px 10px;margin-bottom:7px;
+  font-size:0.82rem;display:flex;align-items:flex-start;gap:7px;
+  transition:all 0.15s;
+}
+.plan-item.done { opacity:0.55;text-decoration:line-through; }
+.plan-dot { width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:3px; }
+.add-plan-btn {
+  width:100%;padding:7px;border:1.5px dashed var(--border);border-radius:var(--r-xs);
+  background:transparent;color:var(--muted);font-family:'Tajawal',sans-serif;
+  font-size:0.78rem;cursor:pointer;transition:all 0.18s;
+}
+.add-plan-btn:hover{border-color:var(--sky);color:var(--sky);}
+</style>
+</head>
+<body>
+<div id="appShell"></div>
+<div id="toastContainer"></div>
+<main class="main-content" id="mainContent">
+  <div class="loading-wrap"><div class="spinner"></div></div>
+</main>
+
+<!-- Modal: إضافة مهمة -->
+<div class="modal-overlay" id="planModal">
+  <div class="modal-box" style="max-width:400px;">
+    <div class="modal-header">
+      <h3 id="planModalTitle">➕ مهمة جديدة</h3>
+      <button class="modal-close" onclick="closeModal('planModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="planDay" />
+      <div class="fg"><label>المهمة / الدرس</label>
+        <input type="text" id="planText" placeholder="مثال: شرح الفصل الثاني..." /></div>
+      <div class="fg"><label>الوقت (اختياري)</label>
+        <input type="time" id="planTime" dir="ltr" /></div>
+      <div class="fg"><label>اللون</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;" id="colorPicker">
+          ${['#1565c0','#10b981','#f59e0b','#ef4444','#7c3aed','#f43f5e'].map(c=>`
+            <div onclick="document.getElementById('planColor').value='${c}';document.querySelectorAll('.cpick').forEach(x=>x.style.outline='none');this.style.outline='3px solid white';"
+              class="cpick" style="width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;transition:all 0.15s;"></div>`).join('')}
+          <input type="hidden" id="planColor" value="#1565c0" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="addPlan()">إضافة</button>
+      <button class="btn btn-ghost" onclick="closeModal('planModal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">import '../js/firebase.js';</script>
+<script src="../js/shared.js"></script>
+<script src="../js/shell.js"></script>
+<script>
+window.PAGE_ID = 'planner';
+
+const DAYS = [
+  {key:'sun',label:'الأحد',    color:'#1565c0'},
+  {key:'mon',label:'الاثنين', color:'#7c3aed'},
+  {key:'tue',label:'الثلاثاء',color:'#10b981'},
+  {key:'wed',label:'الأربعاء',color:'#f59e0b'},
+  {key:'thu',label:'الخميس',  color:'#ef4444'},
+];
+
+let _curWeek = getWeekKey(new Date());
+
+initApp({ sections:['planner','subjects'], onReady: renderPlanner });
+
+function getWeekKey(date) {
+  const d = new Date(date);
+  d.setDate(d.getDate() - d.getDay()); // الأحد
+  return d.toISOString().split('T')[0];
+}
+function prevWeek() { const d=new Date(_curWeek); d.setDate(d.getDate()-7); _curWeek=getWeekKey(d); renderPlannerBody(); }
+function nextWeek() { const d=new Date(_curWeek); d.setDate(d.getDate()+7); _curWeek=getWeekKey(d); renderPlannerBody(); }
+window.prevWeek=prevWeek; window.nextWeek=nextWeek;
+
+function renderPlanner() {
+  document.getElementById('mainContent').innerHTML = `
+    <div class="breadcrumb">🏠 <a href="dashboard.html" style="color:inherit;text-decoration:none;">الرئيسية</a> <span class="sep">›</span> <span class="active">📅 المخطط الأسبوعي</span></div>
+    <div class="ph">
+      <div><div class="ph-title">📅 المخطط الأسبوعي</div></div>
+      <div class="ph-actions">
+        <button class="btn btn-ghost" onclick="prevWeek()">‹ الأسبوع السابق</button>
+        <button class="btn btn-ghost btn-sm" id="weekLabel" onclick="_curWeek=getWeekKey(new Date());renderPlannerBody()">اليوم</button>
+        <button class="btn btn-ghost" onclick="nextWeek()">الأسبوع التالي ›</button>
+        <button class="btn btn-primary" onclick="savePlanner()">💾 حفظ</button>
+      </div>
+    </div>
+    <div id="planBody"></div>
+  `;
+  renderPlannerBody();
+}
+
+function renderPlannerBody() {
+  const A = window.APP;
+  const weekData = A.planner[_curWeek] || {};
+  const weekStart = new Date(_curWeek);
+  const weekEnd   = new Date(_curWeek); weekEnd.setDate(weekEnd.getDate()+4);
+  const lbl = document.getElementById('weekLabel');
+  if (lbl) lbl.textContent = `${weekStart.toLocaleDateString('ar-EG',{month:'short',day:'numeric'})} – ${weekEnd.toLocaleDateString('ar-EG',{month:'short',day:'numeric'})}`;
+
+  document.getElementById('planBody').innerHTML = `
+    <div class="week-grid">
+      ${DAYS.map(day=>{
+        const items = weekData[day.key] || [];
+        return `
+          <div class="day-col">
+            <div class="day-header" style="background:${day.color};">
+              <span>${day.label}</span>
+              <span style="font-size:0.74rem;opacity:0.85;">${items.length} مهمة</span>
+            </div>
+            <div class="day-body" id="day-${day.key}">
+              ${items.map((item,i)=>`
+                <div class="plan-item ${item.done?'done':''}" id="pitem-${day.key}-${i}">
+                  <div class="plan-dot" style="background:${item.color||day.color};"></div>
+                  <div style="flex:1;">
+                    ${item.time?`<div style="font-size:0.70rem;color:var(--muted);margin-bottom:2px;">${item.time}</div>`:''}
+                    <div>${esc(item.text)}</div>
+                  </div>
+                  <div style="display:flex;gap:3px;flex-shrink:0;">
+                    <button onclick="togglePlan('${day.key}',${i})" style="background:none;border:none;cursor:pointer;font-size:0.85rem;" title="${item.done?'إلغاء الإنجاز':'تحديد كمنجز'}">${item.done?'↩️':'✅'}</button>
+                    <button onclick="deletePlan('${day.key}',${i})" style="background:none;border:none;cursor:pointer;font-size:0.80rem;color:var(--ember);" title="حذف">✕</button>
+                  </div>
+                </div>`).join('')}
+              <button class="add-plan-btn" onclick="openPlanModal('${day.key}')">+ إضافة</button>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function openPlanModal(dayKey) {
+  document.getElementById('planDay').value  = dayKey;
+  document.getElementById('planText').value = '';
+  document.getElementById('planTime').value = '';
+  document.getElementById('planColor').value= '#1565c0';
+  document.querySelectorAll('.cpick').forEach((x,i)=>{ x.style.outline = i===0?'3px solid white':'none'; });
+  openModal('planModal');
+}
+window.openPlanModal = openPlanModal;
+
+function addPlan() {
+  const A = window.APP;
+  const day  = document.getElementById('planDay').value;
+  const text = document.getElementById('planText').value.trim();
+  const time = document.getElementById('planTime').value;
+  const color= document.getElementById('planColor').value;
+  if (!text) { toast('أدخل نص المهمة', 'warning'); return; }
+  if (!A.planner[_curWeek]) A.planner[_curWeek] = {};
+  if (!A.planner[_curWeek][day]) A.planner[_curWeek][day] = [];
+  A.planner[_curWeek][day].push({ text, time, color, done:false });
+  closeModal('planModal');
+  renderPlannerBody();
+}
+window.addPlan = addPlan;
+
+function togglePlan(day, idx) {
+  const A = window.APP;
+  if (A.planner[_curWeek]?.[day]?.[idx]) {
+    A.planner[_curWeek][day][idx].done = !A.planner[_curWeek][day][idx].done;
+    renderPlannerBody();
+  }
+}
+window.togglePlan = togglePlan;
+
+function deletePlan(day, idx) {
+  const A = window.APP;
+  A.planner[_curWeek]?.[day]?.splice(idx, 1);
+  renderPlannerBody();
+}
+window.deletePlan = deletePlan;
+
+async function savePlanner() {
+  const ok = await saveSection('planner');
+  toast(ok!==false?'تم حفظ المخطط ✅':'خطأ في الحفظ', ok!==false?'success':'error');
+}
+window.savePlanner = savePlanner;
+</script>
+</body>
+</html>
