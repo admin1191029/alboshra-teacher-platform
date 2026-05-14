@@ -172,10 +172,42 @@ async function saveSection(section) {
 window.saveSection = saveSection;
 
 // ═══════════════════════════════════════════════
+// انتظار تحميل Firebase (لأن module يتأخر)
+// ═══════════════════════════════════════════════
+function waitForDB(timeout = 8000) {
+  return new Promise((resolve, reject) => {
+    if (window.DB) { resolve(); return; }
+    const start = Date.now();
+    const check = setInterval(() => {
+      if (window.DB) { clearInterval(check); resolve(); }
+      else if (Date.now() - start > timeout) {
+        clearInterval(check);
+        reject(new Error('Firebase لم يتحمل — تحقق من الاتصال بالإنترنت'));
+      }
+    }, 50);
+  });
+}
+window.waitForDB = waitForDB;
+
+// ═══════════════════════════════════════════════
 // init — يُستدعى في بداية كل صفحة
 // ═══════════════════════════════════════════════
 async function initApp(options = {}) {
   const { requireAuth = true, onReady, sections = [] } = options;
+
+  // انتظر حتى يتحمل Firebase
+  try {
+    await waitForDB();
+  } catch(e) {
+    document.getElementById('mainContent').innerHTML = `
+      <div class="empty-state" style="padding:60px 20px;">
+        <div class="es-icon">⚠️</div>
+        <div class="es-title">تعذّر الاتصال بـ Firebase</div>
+        <div class="es-sub">${e.message}</div>
+        <button class="btn btn-primary" style="margin-top:16px;" onclick="location.reload()">🔄 إعادة المحاولة</button>
+      </div>`;
+    return null;
+  }
 
   return new Promise((resolve) => {
     DB.onAuthChange(async (user) => {
