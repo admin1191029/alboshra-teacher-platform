@@ -190,78 +190,132 @@ function waitForDB(timeout = 8000) {
 window.waitForDB = waitForDB;
 
 // ═══════════════════════════════════════════════
+// عرض خطأ على الشاشة
+// ═══════════════════════════════════════════════
+function showError(msg, detail = '') {
+  const el = document.getElementById('mainContent');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="max-width:500px;margin:60px auto;padding:32px;
+         background:rgba(239,68,68,0.08);border:1.5px solid rgba(239,68,68,0.25);
+         border-radius:16px;text-align:center;">
+      <div style="font-size:2.5rem;margin-bottom:12px;">⚠️</div>
+      <div style="font-size:1rem;font-weight:800;color:#dc2626;margin-bottom:10px;">${msg}</div>
+      ${detail ? `<div style="font-size:0.78rem;color:#6b7280;font-family:monospace;
+           background:rgba(0,0,0,0.06);padding:10px;border-radius:8px;
+           word-break:break-all;margin-bottom:16px;">${detail}</div>` : ''}
+      <button class="btn btn-primary" onclick="location.reload()">🔄 إعادة المحاولة</button>
+    </div>`;
+}
+window.showError = showError;
+
+// ═══════════════════════════════════════════════
 // init — يُستدعى في بداية كل صفحة
 // ═══════════════════════════════════════════════
 async function initApp(options = {}) {
   const { requireAuth = true, onReady, sections = [] } = options;
 
-  // انتظر حتى يتحمل Firebase
+  // 1) انتظر Firebase
   try {
     await waitForDB();
   } catch(e) {
-    document.getElementById('mainContent').innerHTML = `
-      <div class="empty-state" style="padding:60px 20px;">
-        <div class="es-icon">⚠️</div>
-        <div class="es-title">تعذّر الاتصال بـ Firebase</div>
-        <div class="es-sub">${e.message}</div>
-        <button class="btn btn-primary" style="margin-top:16px;" onclick="location.reload()">🔄 إعادة المحاولة</button>
-      </div>`;
+    showError('Firebase لم يتحمل', e.message);
     return null;
   }
 
+  // 2) تحقق من Auth وحمّل البيانات
   return new Promise((resolve) => {
     DB.onAuthChange(async (user) => {
-      if (!user) {
-        if (requireAuth) {
-          window.location.href = '../index.html';
+      try {
+        // غير مسجّل → أعد للصفحة الرئيسية
+        if (!user) {
+          if (requireAuth) window.location.href = '../index.html';
+          resolve(null);
+          return;
         }
+
+        A.uid  = user.uid;
+        A.user = user;
+
+        // تحميل/إنشاء profile
+        try {
+          const profile = await DB.loadProfile(user.uid);
+          if (profile) {
+            A.teacher.n1    = profile.n1    || '';
+            A.teacher.n2    = profile.n2    || '';
+            A.teacher.n3    = profile.n3    || '';
+            A.teacher.photo = profile.photo || '';
+          } else {
+            A.teacher.n1 = user.displayName?.split(' ')[0] || user.email?.split('@')[0] || 'معلم';
+            A.teacher.n2 = user.displayName?.split(' ').slice(1).join(' ') || '';
+            await DB.saveProfile(user.uid, {
+              n1: A.teacher.n1, n2: A.teacher.n2, n3: '',
+              photo: user.photoURL || '', email: user.email || ''
+            });
+          }
+        } catch(profileErr) {
+          // فشل profile لكن نكمل — المعلومات من Google
+          A.teacher.n1 = user.displayName?.split(' ')[0] || 'معلم';
+          console.warn('[initApp] profile error (ignored):', profileErr.code || profileErr.message);
+        }
+
+        // تحميل/إنشاء الفصول
+        try {
+          A.classes = await DB.loadClasses(user.uid);
+        } catch(e) {
+          A.classes = [];
+          console.warn('[initApp] loadClasses error:', e.code || e.message);
+        }
+
+        if (!A.classes.length) {
+          const defaultId = 'class_default';
+          try {
+            await DB.saveClass(user.uid, defaultId, {
+              name: 'فصلي الأول', subject: '',
+              createdAt: new Date().toISOString()
+            });
+          } catch(e) {
+            console.warn('[initApp] saveClass error:', e.code || e.message);
+          }
+          A.classes = [{ id: defaultId, name: 'فصلي الأول', subject: '' }];
+        }
+
+        // الفصل النشط
+        const savedClass = localStorage.getItem(`bs_active_class_${user.uid}`);
+        const found = A.classes.find(c => c.id === savedClass);
+        A.activeClassId   = found ? savedClass : A.classes[0].id;
+        A.activeClassName = (found || A.classes[0]).name;
+
+        // تحديث الواجهة
+        updateTopbar();
+        setActiveNav();
+
+        // تحميل الأقسام المطلوبة
+        if (sections.length) {
+          try {
+            await loadClassData(sections);
+          } catch(e) {
+            console.warn('[initApp] loadClassData error:', e.code || e.message);
+          }
+        }
+
+        // استدعاء onReady
+        if (onReady) onReady(user);
+        resolve(user);
+
+      } catch(err) {
+        // خطأ غير متوقع — أظهره على الشاشة
+        const code = err.code || '';
+        const msg  = err.message || String(err);
+        console.error('[initApp] fatal error:', err);
+        showError(
+          code === 'permission-denied'
+            ? 'خطأ في صلاحيات Firestore'
+            : 'خطأ في تحميل البيانات',
+          `${code ? code + ': ' : ''}${msg}`
+        );
         resolve(null);
-        return;
       }
-
-      A.uid  = user.uid;
-      A.user = user;
-
-      // تحميل profile المعلم
-      const profile = await DB.loadProfile(user.uid);
-      if (profile) {
-        A.teacher.n1    = profile.n1    || '';
-        A.teacher.n2    = profile.n2    || '';
-        A.teacher.n3    = profile.n3    || '';
-        A.teacher.photo = profile.photo || '';
-      } else {
-        // معلم جديد — احفظ بياناته من Google
-        A.teacher.n1 = user.displayName?.split(' ')[0] || '';
-        A.teacher.n2 = user.displayName?.split(' ').slice(1).join(' ') || '';
-        await DB.saveProfile(user.uid, { n1: A.teacher.n1, n2: A.teacher.n2, n3: '', photo: user.photoURL || '', email: user.email });
-      }
-
-      // تحميل الفصول
-      A.classes = await DB.loadClasses(user.uid);
-      if (!A.classes.length) {
-        // إنشاء فصل افتراضي
-        const defaultId = 'class_default';
-        await DB.saveClass(user.uid, defaultId, { name: 'فصلي الأول', subject: '', createdAt: new Date().toISOString() });
-        A.classes = [{ id: defaultId, name: 'فصلي الأول', subject: '' }];
-      }
-
-      // الفصل النشط
-      const savedClass = localStorage.getItem(`bs_active_class_${user.uid}`);
-      const found = A.classes.find(c => c.id === savedClass);
-      A.activeClassId   = found ? savedClass : A.classes[0].id;
-      A.activeClassName = (found || A.classes[0]).name;
-
-      // تحديث الواجهة
-      updateTopbar();
-      setActiveNav();
-
-      // تحميل الأقسام المطلوبة
-      if (sections.length) {
-        await loadClassData(sections);
-      }
-
-      if (onReady) onReady(user);
-      resolve(user);
     });
   });
 }
