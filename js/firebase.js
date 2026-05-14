@@ -23,12 +23,13 @@ import { getFirestore, doc, getDoc, setDoc,
 // 🔧 إعدادات Firebase
 // ═══════════════════════════════════════════════
 const firebaseConfig = {
-  apiKey:            "AIzaSyBRoDBs5cH1Ud2k8LYTAT7g40JqyhHpZ4Q",
-  authDomain:        "el-bushra-school-admin.firebaseapp.com",
-  projectId:         "el-bushra-school-admin",
-  storageBucket:     "el-bushra-school-admin.firebasestorage.app",
-  messagingSenderId: "1073893646584",
-  appId:             "1:1073893646584:web:b8c3cd998d2314791a1b0d"
+  apiKey:            "AIzaSyBnaofIHri9yJO3Drka884nWAQVot8cXdM",
+  authDomain:        "teachers-wep.firebaseapp.com",
+  projectId:         "teachers-wep",
+  storageBucket:     "teachers-wep.firebasestorage.app",
+  messagingSenderId: "699668127910",
+  appId:             "1:699668127910:web:97184fa42ed31ba009d467",
+  measurementId:     "G-T48YMVGBYW"
 };
 
 const app  = initializeApp(firebaseConfig);
